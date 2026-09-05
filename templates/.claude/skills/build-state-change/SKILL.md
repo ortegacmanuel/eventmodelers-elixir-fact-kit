@@ -1,345 +1,346 @@
 ---
 name: build-state-change
-description: Implementa una rodaja de escritura (comando validado contra los eventos replegados, eventos nuevos emitidos) en Elixir con el event store FACT, a partir de un slice.json
+description: Implements a write slice (a command validated against replayed events, new events emitted) in Elixir with the FACT event store, from a slice.json
 ---
 
-# Construir una rodaja de escritura
+# Build a write slice
 
-> Antes de nada, lee la definición en `.build-kit/.slices/{Contexto}/{rodaja}/slice.json`.
-> Ese fichero es la **fuente de verdad** de todos los campos, eventos y metadatos.
-> Nunca inventes campos que no estén ahí.
+> Before anything else, read the definition at
+> `.build-kit/.slices/{Context}/{slice}/slice.json`. That file is the **source of
+> truth** for every field, event and piece of metadata. Never invent fields that
+> aren't there.
 
-> Y lee `.build-kit/CLAUDE.md`. Lleva tres reglas que `slice.json` no dice, y las
-> tres aparecen aquí abajo porque sin ellas el código compila y está mal.
+> And read `.build-kit/CLAUDE.md`. It carries three rules `slice.json` doesn't
+> state, and all three show up below — without them the code compiles and is
+> wrong.
 
 ---
 
-## Qué es una rodaja de escritura
+## What a write slice is
 
-Un comando que decide, contra la historia, si emite eventos. En esta pila:
+A command that decides, against history, whether to emit events. In this stack:
 
 ```
-Context.funcion(...)  →  Decide.execute(db, Core, cmd)
-                              1. Lectura.leer(db, Core.query(cmd))     → eventos
-                              2. Enum.reduce(…, Core.apply_event/2)    → estado
-                              3. Core.execute(cmd, estado)             → {:ok, [ev]} | {:error, m}
-                              4. FactEvent.to_fact/1                   → mapas
+Context.function(...)  →  Decide.execute(db, Core, cmd)
+                              1. Reader.read(db, Core.query(cmd))     → events
+                              2. Enum.reduce(…, Core.apply_event/2)   → state
+                              3. Core.execute(cmd, state)             → {:ok, [ev]} | {:error, m}
+                              4. FactEvent.to_fact/1                  → maps
                               5. Fact.append(db, …, {append_condition, pos})
-                              6. espera a que lo escrito sea visible
+                              6. wait until the write is visible
 ```
 
-`Core` es **puro**. `Decide` pone los efectos. `Context` es la única API pública.
+`Core` is **pure**. `Decide` owns the side effects. `Context` is the only public
+API.
 
 ---
 
-## Paso 1 — Leer el `slice.json`
+## Step 1 — Read the `slice.json`
 
-Saca de ahí:
+Pull out:
 
-- **`title`** — el nombre de la rodaja. Da nombre a la carpeta, en `snake_case`.
-- **`context`** — el contexto acotado.
-- **`commands[]`** — con sus `fields[]`: `name`, `type`, `cardinality`,
+- **`title`** — the slice name. Names the folder, in `snake_case`.
+- **`context`** — the bounded context.
+- **`commands[]`** with their `fields[]`: `name`, `type`, `cardinality`,
   `idAttribute`, `generated`, `optional`, `mapping`.
-- **`events[]`** — igual, más `dependencies` para saber quién los consume.
-- **`specifications[]`** — los escenarios given/when/then **con datos de
-  ejemplo**. Son los tests, casi literalmente.
-- **`description`** de cada elemento — lleva los invariantes redactados en
-  prosa. Es la fuente de las reglas de negocio; léela entera.
+- **`events[]`** — same, plus `dependencies` so you know who consumes them.
+- **`specifications[]`** — the given/when/then scenarios **with example data**.
+  They are the tests, almost literally.
+- **Each element's `description`** — it carries the invariants written out in
+  prose. It is the source of the business rules; read all of it.
 
-> **Comentarios**: cada elemento trae `comments: string[]`. Úsalos como pistas.
-> Si un comentario plantea una **decisión abierta** en vez de una pista —«falta
-> decidir el límite de uso», «¿stream propio o registro?»— no la decidas tú:
-> invoca `request-feedback`. Resolver los consumidos:
+> **Comments**: every element carries `comments: string[]`. Use them as hints.
+> If a comment raises an **open decision** rather than a hint — "rate limiting
+> still undecided", "own stream or the main registry?" — don't decide it
+> yourself: invoke `request-feedback`. Resolve the ones you consume:
 > `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
 
 ---
 
-## Paso 2 — El struct del comando
+## Step 2 — The command struct
 
-**Fichero:** `lib/my_app/slices/<rodaja>/<rodaja>.ex`
+**File:** `lib/my_app/slices/<slice>/<slice>.ex`
 
 ```elixir
-defmodule MyApp.Slices.<Rodaja>.<Rodaja> do
+defmodule MyApp.Slices.<Slice>.<Slice> do
   @moduledoc """
-  Comando: <lo que el actor quiere hacer, en una frase de dominio>.
+  Command: <what the actor wants to do, in one domain sentence>.
 
-  <Y por qué los campos son estos. Si hay campos generados, di aquí que viajan
-  en el comando aunque el tablero no los liste — ver más abajo.>
+  <And why the fields are these. If there are generated fields, say here that
+  they travel on the command even though the board doesn't list them — see
+  below.>
   """
 
-  defstruct [:campo_a, :campo_b]
+  defstruct [:field_a, :field_b]
 end
 ```
 
-**Los campos son los de `commands[].fields[]` en `snake_case`**, más los
-generados del paso 3.
+**The fields are the ones in `commands[].fields[]` in `snake_case`**, plus the
+generated ones from step 3.
 
 ---
 
-## Paso 3 — Los campos generados (regla que `slice.json` no dice)
+## Step 3 — Generated fields (a rule `slice.json` doesn't state)
 
-`slice.json` marca campos con `generated: true` o
-`mapping: "derived:instante del append"`. **No los generes en `Core`.**
+`slice.json` marks fields `generated: true` or
+`mapping: "derived:append instant"`. **Don't generate them in `Core`.**
 
-`Core` es puro: un `DateTime.utc_now()` o un `uuid4()` dentro de `execute/2`
-hace la decisión imposible de probar sin un reloj y sin sembrar aleatoriedad.
+`Core` is pure: a `DateTime.utc_now()` or a `uuid4()` inside `execute/2` makes
+the decision impossible to test without a clock and without seeding randomness.
 
-> **Identificadores e instantes se generan en `context.ex` y viajan en el struct
-> del comando**, aunque `slice.json` no los liste entre los campos del comando.
+> **Identifiers and timestamps are generated in `context.ex` and travel on the
+> command struct**, even though `slice.json` doesn't list them among the
+> command's fields.
 
-Es la **única** desviación autorizada de «si no está en `slice.json`, no está en
-el código». Déjala escrita en el `@moduledoc` del comando, con el porqué.
+This is the **only** authorised deviation from "if it isn't in `slice.json`, it
+isn't in the code". Write it down in the command's `@moduledoc`, with the reason.
 
-- Identificadores → `MyApp.Id.uuid4()`
-- Instantes → `DateTime.utc_now() |> DateTime.to_iso8601()`
+- Identifiers → `MyApp.Id.uuid4()`
+- Timestamps → `DateTime.utc_now() |> DateTime.to_iso8601()`
 
 ---
 
-## Paso 4 — El struct del evento y sus etiquetas
+## Step 4 — The event struct and its tags
 
-**Fichero:** `lib/my_app/slices/<rodaja>/<evento>.ex`, en `snake_case`.
+**File:** `lib/my_app/slices/<slice>/<event>.ex`, in `snake_case`.
 
 ```elixir
-defmodule MyApp.Slices.<Rodaja>.<Evento> do
+defmodule MyApp.Slices.<Slice>.<Event> do
   @moduledoc """
-  Evento: <lo que pasó, en pasado y en lenguaje de dominio>.
+  Event: <what happened, past tense, in domain language>.
 
-  <Qué NO implica. La description del tablero suele decirlo, y suele ser lo más
-  valioso que hay ahí.>
+  <What it does NOT imply. The board's description usually says, and it's usually
+  the most valuable thing there.>
   """
 
-  defstruct [:campo_a, :campo_b]
+  defstruct [:field_a, :field_b]
 
   defimpl MyApp.FactEvent do
     def to_fact(e) do
       %{
-        type: "<Evento>",
+        type: "<Event>",
         data: Map.from_struct(e),
-        tags: ["<entidad>:#{e.<entidad>_id}", "<otra>:#{e.<otra>_id}"]
+        tags: ["<entity>:#{e.<entity>_id}", "<other>:#{e.<other>_id}"]
       }
     end
   end
 end
 ```
 
-### Las etiquetas (regla que `slice.json` no dice)
+### The tags (a rule `slice.json` doesn't state)
 
-`slice.json` trae `tags: []` en todos los elementos. **No están vacías: están
-sin derivar.**
+`slice.json` ships `tags: []` on every element. **They aren't empty, they're
+underived.**
 
-> Cada campo del evento con `idAttribute: true` produce una etiqueta
-> `<nombre sin el sufijo Id, en snake_case>:<valor>`.
+> Every event field with `idAttribute: true` produces a tag
+> `<name without the Id suffix, in snake_case>:<value>`.
 
-`comprobacionId` → `"comprobacion:#{e.comprobacion_id}"`.
-`sesionId` → `"sesion:#{e.sesion_id}"`.
+`checkId` → `"check:#{e.check_id}"`. `sessionId` → `"session:#{e.session_id}"`.
 
-**Esto importa más que ninguna otra cosa de este skill.** Las etiquetas son las
-claves de consulta de todo el sistema: por ellas preguntan `query/1`, los
-modelos de lectura y las colas TODO. Una etiqueta inventada no falla — deja de
-encontrar eventos, en silencio, aguas abajo.
+**This matters more than anything else in this skill.** Tags are the query keys
+of the whole system: `query/1`, the read models and the TODO queues all ask by
+them. A made-up tag doesn't fail — it silently stops finding events downstream.
 
-Si un evento no tiene ningún `idAttribute: true`, **para e invoca
-`request-feedback`**: un evento sin etiquetas no se puede consultar.
+If an event has no `idAttribute: true` at all, **stop and invoke
+`request-feedback`**: an event with no tags can't be queried.
 
-### El tipo del evento
+### The event type
 
-`type:` es el `title` del evento **tal cual**, en PascalCase y sin espacios.
-Es la cadena que emparejan los `apply_event/2` de otras rodajas, así que no la
-adornes.
+`type:` is the event's `title` **verbatim**, PascalCase, no spaces. It's the
+string other slices' `apply_event/2` match on, so don't embellish it.
 
 ---
 
-## Paso 5 — `core.ex`
+## Step 5 — `core.ex`
 
-**Fichero:** `lib/my_app/slices/<rodaja>/core.ex`
+**File:** `lib/my_app/slices/<slice>/core.ex`
 
 ```elixir
-defmodule MyApp.Slices.<Rodaja>.Core do
+defmodule MyApp.Slices.<Slice>.Core do
   @moduledoc """
-  <Qué decide, y con qué reglas. Si el tablero retiró reglas que parecían
-  obvias, di cuáles y por qué: es lo que impide que vuelvan.>
+  <What it decides, and by what rules. If the board removed rules that seem
+  obvious, say which and why: that's what stops them coming back.>
   """
 
   use MyApp.StateChange
 
-  alias MyApp.Slices.<Rodaja>.{<Comando>, <Evento>}
+  alias MyApp.Slices.<Slice>.{<Command>, <Event>}
 
   @impl true
-  def query(%<Comando>{} = cmd) do
-    Fact.QueryItem.types(["<Evento>"])
-    |> Fact.QueryItem.tags(["<entidad>:#{cmd.<entidad>_id}"])
+  def query(%<Command>{} = cmd) do
+    Fact.QueryItem.types(["<Event>"])
+    |> Fact.QueryItem.tags(["<entity>:#{cmd.<entity>_id}"])
   end
 
   @impl true
-  def initial_state, do: %{ya_ocurrio: false}
+  def initial_state, do: %{already_happened: false}
 
   @impl true
-  def apply_event(state, %{"event_type" => "<Evento>"}), do: %{state | ya_ocurrio: true}
+  def apply_event(state, %{"event_type" => "<Event>"}), do: %{state | already_happened: true}
   def apply_event(state, _), do: state
 
   @impl true
-  def execute(_cmd, %{ya_ocurrio: true}), do: {:ok, []}
+  def execute(_cmd, %{already_happened: true}), do: {:ok, []}
 
-  def execute(%<Comando>{} = cmd, _state) do
-    with :ok <- valida(cmd) do
-      {:ok, [%<Evento>{...}]}
+  def execute(%<Command>{} = cmd, _state) do
+    with :ok <- validate(cmd) do
+      {:ok, [%<Event>{...}]}
     end
   end
 end
 ```
 
-### Qué leer en `query/1`
+### What to read in `query/1`
 
-**Sólo lo que la decisión necesita.** No es «todos los eventos de la entidad»:
-es el conjunto mínimo que responde a la pregunta que hace `execute/2`.
+**Only what the decision needs.** Not "every event for this entity": the minimum
+set that answers the question `execute/2` asks.
 
-Si el único invariante es la idempotencia, `query/1` es el propio tipo de evento
-acotado por su identificador — con un id recién generado no pliega nada, y a la
-vez protege contra un reintento con el mismo id.
+If the only invariant is idempotency, `query/1` is the event type itself scoped
+by its identifier — with a freshly generated id it folds nothing, and at the same
+time it guards against a retry with the same id.
 
-`append_condition/1` cae en `query/1` por defecto, que es lo seguro. Sobreescríbelo
-sólo si los eventos concurrentes **no pueden** invalidar la decisión.
+`append_condition/1` falls back to `query/1`, which is the safe default. Override
+it only when concurrent events **cannot** invalidate the decision.
 
-### La validación entera aquí (regla que `slice.json` no dice)
+### All validation here (a rule `slice.json` doesn't state)
 
-La regla del repo manda los invariantes a `core.ex` y la validación de forma a
-`context.ex`. Con las especificaciones del tablero eso no funciona: los
-escenarios `SPEC_ERROR` se prueban en `core_test.exs`, que es puro y no pasa por
+The usual rule sends invariants to `core.ex` and shape validation to
+`context.ex`. With the board's specifications that doesn't work: the `SPEC_ERROR`
+scenarios are tested in `core_test.exs`, which is pure and never goes through
 `Context`.
 
-> **Toda la validación va en `core.ex`**, incluida la de forma. Decodificar JSON,
-> comprobar rangos o contar elementos es puro, así que cabe.
-> `context.ex` sólo limpia (`nil`, espacios) y construye el comando.
+> **All validation lives in `core.ex`**, shape checks included. Decoding JSON,
+> checking ranges or counting elements is pure, so it fits. `context.ex` only
+> cleans (`nil`, whitespace) and builds the command.
 
-Los motivos de error son **átomos de dominio** (`:geometria_requerida`,
-`:poligono_sin_superficie`), no cadenas: la pantalla los traduce.
+Error reasons are **domain atoms** (`:geometry_required`,
+`:polygon_encloses_no_area`), not strings: the screen translates them.
 
-### Los umbrales se justifican
+### Thresholds get justified
 
-Si necesitas una constante que `slice.json` no da, escribe en un comentario **de
-dónde sale y en qué unidades**. Un umbral sin justificación es una regla de
-negocio inventada.
+If you need a constant `slice.json` doesn't give you, write in a comment **where
+it comes from and in what units**. An unjustified threshold is an invented
+business rule.
 
 ---
 
-## Paso 6 — `context.ex`
+## Step 6 — `context.ex`
 
-**Fichero:** `lib/my_app/slices/<rodaja>/context.ex`
+**File:** `lib/my_app/slices/<slice>/context.ex`
 
 ```elixir
-defmodule MyApp.Slices.<Rodaja>.Context do
-  @moduledoc "API pública de <la rodaja>."
+defmodule MyApp.Slices.<Slice>.Context do
+  @moduledoc "Public API of <the slice>."
 
-  alias MyApp.Slices.<Rodaja>.{<Comando>, Core}
+  alias MyApp.Slices.<Slice>.{<Command>, Core}
 
   require Logger
 
-  def <verbo>(args...) do
+  def <verb>(args...) do
     id = MyApp.Id.uuid4()
 
-    cmd = %<Comando>{
-      <entidad>_id: id,
+    cmd = %<Command>{
+      <entity>_id: id,
       ...,
-      <instante>: DateTime.utc_now() |> DateTime.to_iso8601()
+      <timestamp>: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    case escribir(cmd) do
-      {:ok, _eventos} -> {:ok, id}
+    case write(cmd) do
+      {:ok, _events} -> {:ok, id}
       error -> error
     end
   end
 
-  # `Application.fact_db/0` **lanza** si el store no está en pie, y esto se
-  # llama desde manejadores de LiveView: una excepción ahí mata la sesión del
-  # visitante y se lleva lo que acababa de introducir.
-  defp escribir(cmd) do
+  # `Application.fact_db/0` **raises** if the store isn't up, and this gets
+  # called from LiveView handlers: an exception there kills the visitor's
+  # session and takes with it whatever they had just entered.
+  defp write(cmd) do
     MyApp.Decide.execute(MyApp.Application.fact_db(), Core, cmd)
   rescue
     e in RuntimeError ->
-      Logger.error("no se pudo escribir: #{Exception.message(e)}")
-      {:error, :almacen_no_disponible}
+      Logger.error("could not write: #{Exception.message(e)}")
+      {:error, :store_unavailable}
   end
 end
 ```
 
-Devuelve `{:ok, <identificador>}`, no `{:ok, eventos}`: el identificador es lo
-que la capa de arriba necesita para suscribirse al resultado y para enseñar la
-referencia.
+Return `{:ok, <identifier>}`, not `{:ok, events}`: the identifier is what the
+layer above needs to subscribe to the result and to show the reference.
 
 ---
 
-## Paso 7 — `core_test.exs`
+## Step 7 — `core_test.exs`
 
-**Fichero:** `test/my_app/slices/<rodaja>/core_test.exs`
+**File:** `test/my_app/slices/<slice>/core_test.exs`
 
-**Un `describe` por especificación de `slice.json`, con su título literal.** Así
-se ve de un vistazo qué escenario del tablero cubre cada bloque.
+**One `describe` per specification in `slice.json`, with its literal title.** That
+way you can see at a glance which board scenario each block covers.
 
 ```elixir
-defmodule MyApp.Slices.<Rodaja>.CoreTest do
+defmodule MyApp.Slices.<Slice>.CoreTest do
   use ExUnit.Case, async: true
 
-  alias MyApp.Slices.<Rodaja>.{<Comando>, <Evento>, Core}
+  alias MyApp.Slices.<Slice>.{<Command>, <Event>, Core}
 
-  defp dado(eventos),
-    do: Enum.reduce(eventos, Core.initial_state(), &Core.apply_event(&2, &1))
+  defp given(events),
+    do: Enum.reduce(events, Core.initial_state(), &Core.apply_event(&2, &1))
 
-  defp evento_fact(tipo, datos \\ %{}),
-    do: %{"event_type" => tipo, "event_data" => datos}
+  defp fact_event(type, data \\ %{}),
+    do: %{"event_type" => type, "event_data" => data}
 
-  defp cmd(overrides \\ %{}), do: Map.merge(%<Comando>{...}, overrides)
+  defp cmd(overrides \\ %{}), do: Map.merge(%<Command>{...}, overrides)
 
-  describe "<título literal de la especificación>" do
-    test "<lo que fija>" do
-      assert {:ok, [%<Evento>{} = e]} = Core.execute(cmd(), dado([]))
-      assert e.campo == "<el ejemplo del slice.json>"
+  describe "<the specification's literal title>" do
+    test "<what it pins down>" do
+      assert {:ok, [%<Event>{} = e]} = Core.execute(cmd(), given([]))
+      assert e.field == "<the example from slice.json>"
     end
   end
 end
 ```
 
-Reglas:
+Rules:
 
-- **Sólo el `Core` puro.** Sin store, sin `Context`, sin `ConnCase`.
-- **Los datos salen de `specifications[].given/when/then[].fields[].example`**,
-  literalmente. No inventes valores: los del tablero suelen estar medidos.
-- **Prueba también `FactEvent.to_fact/1`**: tipo, datos y **las dos etiquetas**.
-  Es lo único que fija la regla del paso 4.
-- Los eventos del `given` se fabrican como **mapas de claves string**,
-  respetando la frontera que mantiene independientes a las rodajas.
-- Un escenario `SPEC_ERROR` es `assert {:error, :motivo} = Core.execute(...)`.
+- **The pure `Core` only.** No store, no `Context`, no `ConnCase`.
+- **The data comes from `specifications[].given/when/then[].fields[].example`**,
+  literally. Don't invent values: the board's are usually measured.
+- **Test `FactEvent.to_fact/1` too**: type, data and **the tags**. It's the only
+  thing that pins down the rule from step 4.
+- The `given` events are built as **string-keyed maps**, respecting the boundary
+  that keeps slices independent.
+- A `SPEC_ERROR` scenario is `assert {:error, :reason} = Core.execute(...)`.
+- **Never compare `Map.keys/1` against a list** — the order isn't guaranteed and
+  the assertion fails intermittently. Use `MapSet`.
 
-### Si un test falla, sospecha del test
+### If a test fails, suspect the test
 
-Los ejemplos del tablero suelen venir medidos contra sistemas reales. Antes de
-cambiar el código, comprueba que la aserción dice lo que el escenario dice.
+The board's examples are usually measured against real systems. Before changing
+the code, check the assertion says what the scenario says.
 
 ---
 
-## Paso 8 — Quality gate
+## Step 8 — Quality gate
 
 ```
 mix precommit                          # --warnings-as-errors, format, tests
-mix test test/my_app/slices/<rodaja>/    # sólo los de la rodaja
+mix test test/my_app/slices/<slice>/   # this slice only
 ```
 
-Nunca commitees con avisos en rojo.
+Never commit with warnings.
 
 ---
 
-## Verificación final contra `slice.json`
+## Final check against `slice.json`
 
-Antes de dar la rodaja por hecha:
-
-- [ ] Cada campo de `commands[].fields[]` está en el struct del comando.
-- [ ] Cada campo de `events[].fields[]` está en el struct del evento.
-- [ ] Ningún campo inventado — salvo los generados del paso 3, documentados.
-- [ ] Cada `idAttribute: true` produce su etiqueta.
-- [ ] Cada `specifications[]` tiene su `describe` en el test.
-- [ ] `Core` no tiene efectos: ni `utc_now`, ni `uuid4`, ni `Req`, ni `Fact`.
-- [ ] `apply_event/2` tiene cláusula final que ignora lo que no es suyo.
-- [ ] Si la rodaja tiene `screens`, **no** has escrito interfaz: has escrito el
-      **encargo de pantalla** en `docs/pantallas/<rodaja>.md`, como manda
-      `.build-kit/CLAUDE.md`, y lo has anotado en `progress.txt`. Incluye los
-      **átomos de error** que devuelve `Core`: la pantalla los tiene que
-      traducir y no los puede adivinar.
+- [ ] Every field in `commands[].fields[]` is in the command struct.
+- [ ] Every field in `events[].fields[]` is in the event struct.
+- [ ] No invented fields — except the generated ones from step 3, documented.
+- [ ] Every `idAttribute: true` produces its tag.
+- [ ] Every `specifications[]` has its `describe` in the test.
+- [ ] `Core` has no side effects: no `utc_now`, no `uuid4`, no `Req`, no `Fact`.
+- [ ] `apply_event/2` has a final clause ignoring what isn't its own.
+- [ ] If the slice has `screens`, you have **not** written an interface: you have
+      written the **screen brief** at `docs/screens/<slice>.md`, as
+      `.build-kit/CLAUDE.md` requires, and noted it in `progress.txt`. Include
+      the **error atoms** `Core` returns: the screen translates them and can't
+      guess them.

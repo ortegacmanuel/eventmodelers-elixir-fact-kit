@@ -1,235 +1,233 @@
-# Blueprint: Elixir + Phoenix + FACT (event sourcing sin base de datos)
+# Blueprint: Elixir + Phoenix + FACT (event sourcing, no database)
 
-Esto es «cómo se construye aquí». No es una guía de estilo: es el contrato que
-permite que un agente implemente una rodaja sin que nadie tenga que revisar
-dónde va cada fichero ni cómo se llama cada cosa.
+This is "how we build things here". Not a style guide: it's the contract that
+lets an agent implement a slice without anyone having to review where each file
+goes or what each thing is called.
 
-Los eventos de dominio viven en `lib/my_app/slices/<rodaja>/`, uno por fichero.
-El armazón está en `lib/my_app/` — léelo antes de la primera rodaja:
-`decide.ex`, `lectura.ex`, `state_change.ex`, `state_view.ex`, `fact_event.ex`,
-`id.ex`.
+Domain events live in `lib/my_app/slices/<slice>/`, one per file. The framework
+is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex`,
+`state_change.ex`, `state_view.ex`, `fact_event.ex`, `id.ex`.
 
-## Restricciones de ficheros
+## File constraints
 
-- **Ruta estricta:** trabaja dentro de `lib/my_app/slices/<rodaja>/*` y
-  `test/my_app/slices/<rodaja>/*`. Nada más, salvo lo que diga explícitamente el
-  skill que estés ejecutando.
-- **Una rodaja, una carpeta.** Nunca ficheros de dos rodajas mezclados.
-- **No toques `lib/my_app/` (el armazón)** ni `lib/my_app_web/` sin que te lo pidan.
-  Las pantallas no las construye este kit — ver «Lo que este kit NO hace».
+- **Strict path:** work inside `lib/my_app/slices/<slice>/*` and
+  `test/my_app/slices/<slice>/*`. Nothing else, unless the skill you're running
+  says so explicitly.
+- **One slice, one folder.** Never files from two slices mixed together.
+- **Don't touch `lib/my_app/` (the framework)** or `lib/my_app_web/` unless
+  asked. This kit doesn't build screens — see below.
 
-## Estándares
+## Standards
 
-- **Lenguaje:** Elixir. **Framework:** Phoenix 1.8+. **Almacén:** `fact` 0.2.0,
-  ficheros, sin base de datos.
-- **Nombres de dominio en castellano** (`Comprobacion`, `veredicto`,
-  `geometria`). Los módulos del armazón conservan sus nombres en inglés
-  (`Decide`, `StateChange`, `StateView`, `FactEvent`) porque vienen copiados de
-  `traduka-servo` y se comparten entre proyectos.
-- **Sin Ecto en el dominio.** Está en `deps` sólo por `phoenix_ecto`. Para
-  identificadores, `MyApp.Id.uuid4/0`.
-- **HTTP:** `Req`. Nunca `httpoison`, `tesla` ni `httpc`.
-- **Nunca anides módulos en el mismo fichero**: provoca dependencias cíclicas.
+- **Language:** Elixir. **Framework:** Phoenix 1.8+. **Store:** `fact` 0.2.0,
+  files, no database.
+- **Domain names follow the board.** If the model is written in another
+  language, keep it: slice titles, event names and field names come from
+  `slice.json` and are the shared vocabulary with the people who modelled it.
+  The framework modules keep their English names.
+- **No Ecto in the domain.** For identifiers, `MyApp.Id.uuid4/0`.
+- **HTTP:** `Req`. Never `httpoison`, `tesla` or `httpc`.
+- **Never nest modules in one file**: it causes cyclic dependency errors.
 
-## Reglas de arquitectura
+## Architecture rules
 
-- **Todos los invariantes van en `core.ex`, que es puro.** Sin efectos, sin
-  llamadas de red, sin acceso al almacén. `execute/2` devuelve `{:ok, [eventos]}`
-  o `{:error, atom}`.
-- **Toda escritura pasa por `MyApp.Decide.execute/4`.** Nunca llames a
-  `Fact.append` directamente: `Decide` es quien reintenta ante conflictos de
-  concurrencia y quien espera a que lo escrito sea visible.
-- **Toda lectura pasa por `MyApp.Lectura.leer/2`**, no por `Fact.read`
-  directamente: elige el índice en vez de recorrer el ledger.
-- **Las rodajas no se acoplan.** Sólo comparten las *cadenas* de los tipos de
-  evento. Nunca structs compartidos: los `apply_event/2` emparejan mapas crudos
+- **All invariants live in `core.ex`, which is pure.** No side effects, no
+  network, no store access. `execute/2` returns `{:ok, [events]}` or
+  `{:error, atom}`.
+- **Every write goes through `MyApp.Decide.execute/4`.** Never call
+  `Fact.append` directly: `Decide` is what retries on concurrency conflicts and
+  what waits until the write is visible.
+- **Every read goes through `MyApp.Reader.read/2`**, not `Fact.read` directly:
+  it picks an index instead of scanning the ledger.
+- **Slices don't couple.** They share only the event type *strings*. Never
+  shared structs: `apply_event/2` matches raw maps
   (`%{"event_type" => ..., "event_data" => ...}`).
-- **`append` puro por defecto.** Reevaluar tiene que ser gratis; gana el último
-  evento en orden de log.
+- **Pure `append` by default.** Re-evaluating must be free; the last event in
+  log order wins.
 
-## Construir una rodaja
+## Building a slice
 
-**Usa siempre el skill que corresponda. Nunca implementes una rodaja a mano.**
-**Todos los campos, nombres de evento, de comando y reglas de negocio salen
-EXCLUSIVAMENTE de `slice.json`.** No inventes ninguno que no esté ahí.
+**Always use the matching skill. Never implement a slice by hand.**
+**Every field, event name, command name and business rule comes EXCLUSIVELY from
+`slice.json`.** Don't invent anything that isn't there.
 
-0. **Comprueba que el `slice.json` está completo antes de nada.** El bucle
-   puebla `.slices/` con el endpoint **resumen**, que devuelve seis campos
-   (`id`, `title`, `status`, `sliceType`, `contextId`, `contextName`) y **ni
-   `fields`, ni `events`, ni `specifications`**. Un fichero de ~230 bytes es un
-   stub y no se puede construir con él.
+0. **Check the `slice.json` is complete before anything else.** The loop
+   populates `.slices/` from the **summary** endpoint, which returns six fields
+   (`id`, `title`, `status`, `sliceType`, `contextId`, `contextName`) and
+   **no `fields`, no `events`, no `specifications`**. A ~230-byte file is a stub
+   and you cannot build from it. It's easy to miss: the file exists and parses,
+   it's just empty of everything that matters.
 
-   Si lo es, refresca: `python3 .build-kit/refrescar-rodajas.py`. Usa
-   `/slicedata?contextName=` —la definición entera— y nombra las carpetas con
-   la misma regla que el bucle, así que no deja duplicados.
+   If it is one, refresh: `python3 .build-kit/refresh-slices.py`. It uses
+   `/slicedata?contextName=` — the full definition — and names folders with the
+   same rule as the loop, so it leaves no duplicates.
 
-1. Lee `.build-kit/.slices/<contexto>/<rodaja>/slice.json`.
-2. Determina el tipo y llama al skill:
-   - `sliceType == "TRANSLATION"` → lee `description` y `notes`; por defecto
-     `/build-automation`. En este proyecto la traducción va **en línea** dentro
-     del procesador, nunca como rodaja aparte.
-   - **evento externo entrante** (el sistema de fuera empieza: una confirmación
-     que llega, un resultado que otro servicio devuelve más tarde) →
-     `/build-webhook`. La `description` lo dice; si dudas entre esto y un
-     automatismo, la pregunta es **quién empieza**.
-   - `processors` no vacío → `/build-automation`
-   - `readmodels` o `queries` no vacíos → `/build-state-view`
-   - por defecto (tiene `commands` / `events`) → `/build-state-change`
-3. Sigue el skill entero. No te desvíes.
-4. **Verifica contra `slice.json`**: cada campo de comando, cada campo de
-   evento y cada especificación tiene que estar en el código. Si no está en
-   `slice.json`, no puede estar en el código — con **una excepción**, la de los
-   campos generados, explicada abajo.
-5. `mix precommit` (compila con `--warnings-as-errors`, formatea y corre los
-   tests). Luego los tests de la rodaja.
-6. Si pasa: `git commit -m "feat: <Nombre de la rodaja>"` y estado `Done`.
+1. Read `.build-kit/.slices/<context>/<slice>/slice.json`.
+2. Work out the shape and call the skill:
+   - `sliceType == "TRANSLATION"` → read `description` and `notes`; default to
+     `/build-automation`. In this stack translation happens **inline** inside
+     the processor, never as a separate slice.
+   - **an inbound external event** (the outside system starts it: a confirmation
+     that arrives, a result another service returns later) → `/build-webhook`.
+     The `description` says so; if you're torn between this and an automation,
+     the question is **who starts**.
+   - non-empty `processors` → `/build-automation`
+   - non-empty `readmodels` or `queries` → `/build-state-view`
+   - default (has `commands` / `events`) → `/build-state-change`
+3. Follow the whole skill. Don't deviate.
+4. **Verify against `slice.json`**: every command field, every event field and
+   every specification must appear in the code. If it isn't in `slice.json` it
+   must not be in the code — with **one exception**, generated fields, below.
+5. `mix precommit` (compiles with `--warnings-as-errors`, formats, runs tests).
+   Then the slice's own tests.
+6. If it passes: `git commit -m "feat: <Slice Name>"` and set status `Done`.
 
-## Las tres reglas que `slice.json` no dice
+## Three rules `slice.json` doesn't tell you
 
-Salieron de construir la primera rodaja **a mano**, antes de que existiera este
-kit. Sin ellas un agente produce código que compila y está mal. Los ejemplos son
-de esa rodaja; la regla es general.
+They came from building the first slice **by hand**, before this kit existed.
+Without them an agent produces code that compiles and is wrong. The examples are
+from that slice; the rules are general.
 
-### 1. Las etiquetas salen de `idAttribute: true`
+### 1. Tags come from `idAttribute: true`
 
-`slice.json` trae `tags: []` en todos los elementos. **Las etiquetas no están
-vacías: están sin derivar.** La regla es mecánica:
+`slice.json` ships `tags: []` on every element. **Tags aren't empty, they're
+underived.** The rule is mechanical:
 
-> Cada campo del evento con `idAttribute: true` produce una etiqueta
-> `<nombre sin el sufijo Id, en snake_case>:<valor>`.
+> Every event field with `idAttribute: true` produces a tag
+> `<name without the Id suffix, in snake_case>:<value>`.
 
-`comprobacionId` y `sesionId` → `["comprobacion:#{e.comprobacion_id}",
-"sesion:#{e.sesion_id}"]`.
+`checkId` and `sessionId` → `["check:#{e.check_id}", "session:#{e.session_id}"]`.
 
-Importa porque **las etiquetas son las claves de consulta de todo el sistema**:
-por ellas preguntan `query/1`, los modelos de lectura y las colas TODO.
-Inventarlas rompe en silencio todo lo de aguas abajo.
+This matters more than anything else here: **tags are the query keys of the
+whole system**. `query/1`, the read models and the TODO queues all ask by them.
+A made-up tag doesn't fail — it silently stops finding events downstream.
 
-### 2. Los campos generados viajan en el comando
+If an event has no `idAttribute: true` at all, **stop and invoke
+`request-feedback`**: an event with no tags can't be queried.
 
-`slice.json` marca campos como `generated: true` o con
-`mapping: "derived:..."`. Un `derived:instante del append` en el evento parece
-decir que se genera al escribir — **no lo hagas en `Core`**. `Core` es puro y un
-`DateTime.utc_now()` dentro de `execute/2` hace la decisión imposible de probar
-sin un reloj.
+### 2. Generated fields travel on the command
 
-> Identificadores e instantes se generan en `context.ex` y viajan en el struct
-> del comando, aunque `slice.json` no los liste entre los campos del comando.
+`slice.json` marks fields `generated: true` or with `mapping: "derived:..."`. A
+`derived:append instant` on the event looks like it's produced at write time —
+**don't do that in `Core`**. `Core` is pure, and a `DateTime.utc_now()` inside
+`execute/2` makes the decision impossible to test without a clock.
 
-Es la única desviación autorizada de la regla «si no está en `slice.json`, no
-está en el código». Documéntala en el `@moduledoc` del comando.
+> Identifiers and timestamps are generated in `context.ex` and travel on the
+> command struct, even though `slice.json` doesn't list them among the command's
+> fields.
 
-### 3. La validación no se parte
+This is the only authorised deviation from "if it isn't in `slice.json`, it
+isn't in the code". Document it in the command's `@moduledoc`.
 
-La regla del repo dice que la validación de forma va en `context.ex` y los
-invariantes en `core.ex`. Con las especificaciones del tablero eso no funciona:
-los escenarios de rechazo (`SPEC_ERROR`) se prueban en el `core_test.exs`, que
-es puro y no pasa por `Context`.
+### 3. Validation doesn't get split
 
-> Toda la validación va en `core.ex`, incluida la de forma. Decodificar JSON o
-> comprobar rangos es puro, así que cabe. `context.ex` sólo limpia la entrada
-> (`nil`, espacios) y construye el comando.
+The usual rule sends shape validation to `context.ex` and invariants to
+`core.ex`. With the board's specifications that doesn't work: the `SPEC_ERROR`
+scenarios are tested in `core_test.exs`, which is pure and never goes through
+`Context`.
 
-## Lo que este kit NO hace: pantallas
+> All validation lives in `core.ex`, shape checks included. Decoding JSON or
+> checking ranges is pure, so it fits. `context.ex` only cleans the input
+> (`nil`, whitespace) and builds the command.
 
-`slice.json` trae la pantalla como metadatos —`title`, `fields`, `dependencies`
-y la prosa de `description`— pero **no trae el diseño**. El HTML que haya en el
-tablero no viaja en el payload. Las LiveViews se escriben a mano.
+## What this kit does NOT do: screens
 
-Si la rodaja tiene `screens`: **construye el dominio, escribe el encargo de
-pantalla, y para.** No inventes una interfaz.
+`slice.json` carries the screen as metadata — `title`, `fields`, `dependencies`
+and the prose in `description` — but **not as a design**. Whatever HTML lives on
+the board never travels in the payload. LiveViews are written by hand.
 
-### El encargo de pantalla
+If the slice has `screens`: **build the domain, write the screen brief, stop.**
+Don't invent an interface.
 
-Es el `ui-prompt.md` del paso 12 del bucle. En este proyecto se llama
-`docs/pantallas/<rodaja-en-kebab-case>.md`, va **versionado** —a diferencia de
-`.build-kit/`, que se regenera— y es el contrato entre el dominio y quien
-construya la vista.
+### The screen brief
 
-**Ejemplo hecho**: `docs/pantallas/EJEMPLO-comprobar-una-parcela.md`, que el kit
-deja en el proyecto. Es un encargo real de otro sistema, para que se vea el
-nivel de detalle que merece la pena. Bórralo cuando tengas los tuyos.
+This is step 12's `ui-prompt.md`. Here it's `docs/screens/<slice-in-kebab>.md`,
+it's **version controlled** — unlike `.build-kit/`, which is regenerated — and
+it's the contract between the domain and whoever builds the view.
 
-No es un diseño ni una propuesta de interfaz. Es **qué hay disponible y qué no**,
-para que quien la construya no tenga que leerse la rodaja entera ni inventarse
-lo que falta. Plantilla:
+**Worked example:** `docs/screens/EXAMPLE-check-a-plot.md`, which the kit leaves
+in the project. It's a real brief from another system, so you can see how much
+detail is worth writing. Delete it once you have your own.
+
+It is not a design or a proposal. It's **what's available and what isn't**, so
+whoever builds the view doesn't have to read the whole slice or make things up.
+Template:
 
 ```markdown
-# Pantalla: <título de la pantalla en el tablero>
+# Screen: <the screen's title on the board>
 
-Rodaja `<título>` · nodo `<id de la pantalla>` · escrito por el bucle el <fecha>.
+Slice `<title>` · node `<screen node id>` · written by the loop on <date>.
 
-## Por dónde entra
+## How it's entered
 
-<Función pública del Context, con su firma y qué devuelve. Literal.>
+<The Context's public function, with its signature and what it returns. Verbatim.>
 
-## Qué devuelve
+## What it returns
 
-| campo | tipo | | qué es |
+| field | type | | what it is |
 |---|---|---|---|
-| `campo` | `String` | | <de la description del tablero, no inventado> |
+| `field` | `String` | | <from the board's description, not invented> |
 
-<Marca `opcional` los que pueden no estar todavía, y di **por qué** — casi
-siempre «el evento que lo trae aún no ha llegado».>
+<Mark as optional the ones that may not be there yet, and say **why** — almost
+always "the event that carries it hasn't arrived".>
 
-## Qué manda de vuelta
+## What it sends back
 
-<Sólo si la rodaja tiene comando. La función, sus argumentos, y **los átomos de
-error que puede devolver**, que la pantalla tiene que traducir a mensajes.>
+<Only if the slice has a command. The function, its arguments, and **the error
+atoms it can return**, which the screen has to translate into messages.>
 
-## Estados que hay que pintar
+## States to render
 
-<Vacío, parcial, completo, error. Un modelo de lectura sin eventos tiene que ser
-pintable: di qué se ve entonces.>
+<Empty, partial, complete, error. A read model with no events must be
+renderable: say what shows then.>
 
-## Lo que el tablero dice de esta pantalla
+## What the board says about this screen
 
-<La `description` del nodo de pantalla, citada. Es la intención de diseño y es
-lo único que sobrevive del tablero, porque el HTML no viaja.>
+<The screen node's `description`, quoted. It's the design intent, and the only
+thing that survives from the board, because the HTML doesn't travel.>
 
-## Lo que el dominio NO da
+## What the domain does NOT give you
 
-<Lo más importante del documento. Campos que la pantalla podría querer y no
-existen, y si es a propósito. Evita que quien la construya se los invente o
-los pida al dominio sin motivo.>
+<The most important section. Fields the screen might want that don't exist, and
+whether that's deliberate. Stops whoever builds the view from inventing them, or
+from asking the domain for them without cause.>
 ```
 
-Regla al escribirlo: **todo sale de `slice.json` y del código que acabas de
-escribir.** Si no sabes qué significa un campo, cita la `description` del
-tablero en vez de parafrasear. No propongas disposición, ni copy, ni colores.
+Rule while writing it: **everything comes from `slice.json` and from the code
+you just wrote.** If you don't know what a field means, quote the board's
+`description` instead of paraphrasing. Don't propose layout, copy or colours.
 
-## Forma de una rodaja
+## Slice shape
 
 ```
-lib/my_app/slices/<rodaja>/
-├── <rodaja>.ex        # struct del comando        (sólo escritura)
-├── <evento>.ex        # struct del evento + defimpl FactEvent
-├── core.ex            # use MyApp.StateChange — todos los invariantes, puro
-├── context.ex         # API pública: genera, construye, Decide.execute
-└── processor.ex       # sólo automatismos: GenServer que sondea la cola TODO
+lib/my_app/slices/<slice>/
+├── <slice>.ex         # command struct         (write slices only)
+├── <event>.ex         # event struct + defimpl FactEvent
+├── core.ex            # use MyApp.StateChange — all invariants, pure
+├── context.ex         # public API: generate, build, Decide.execute
+└── processor.ex       # automations only: GenServer polling the TODO queue
 
-test/my_app/slices/<rodaja>/
-└── core_test.exs      # las especificaciones del tablero, sobre el Core puro
+test/my_app/slices/<slice>/
+└── core_test.exs      # the board's specifications, against the pure Core
 ```
 
-Una rodaja de lectura son dos ficheros: `core.ex` y `context.ex`.
+A read slice is two files: `core.ex` and `context.ex`.
 
-**Cuando lleves una rodaja construida, léela antes de la siguiente.** El código
-que ya existe manda sobre estas plantillas: si divergen, la plantilla está
-vieja.
+**Once you have a slice built, read it before the next one.** Existing code
+beats these templates: if they diverge, the template is stale.
 
-## Antes de empezar
+## Before you start
 
-Lee `.build-kit/AGENTS.md` si existe, para cargar lo aprendido en iteraciones
-anteriores. Y al empezar una rodaja, invoca `update-slice-status` con
-`InProgress` antes que nada.
+Read `.build-kit/AGENTS.md` if it exists, to load what earlier iterations
+learned. And when you start a slice, invoke `update-slice-status` with
+`InProgress` before anything else.
 
-## Si algo es ambiguo
+## If something is ambiguous
 
-Si `slice.json` es genuinamente ambiguo, contradictorio, o le falta una decisión
-que necesitas — **no adivines y no construyas igual**. Invoca `request-feedback`
-con la pregunta concreta: publica un comentario en la rodaja y la marca
-`Blocked`. Luego para.
+If `slice.json` is genuinely ambiguous, contradictory, or missing a decision you
+need — **don't guess and don't build anyway**. Invoke `request-feedback` with
+the specific question: it posts a comment on the slice and marks it `Blocked`.
+Then stop.
 
-Es una vía de escape, no un paso rutinario: lee `slice.json` y el skill enteros
-primero. La mayoría de las rodajas están completamente especificadas.
+This is an escape hatch, not a routine step: read the whole `slice.json` and the
+whole skill first. Most slices are fully specified.

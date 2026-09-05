@@ -1,19 +1,19 @@
 defmodule MyApp.StateChange do
   @moduledoc """
-  Comportamiento de las rodajas de escritura (patrón Decider con DCB).
+  Behaviour for write slices (the Decider pattern with DCB).
 
-  Elegir de la historia, plegar hasta el estado actual, decidir el comando →
-  eventos nuevos o rechazo.
+  Pick from history, fold into current state, execute the command → new events
+  or a rejection.
 
-  ## Condiciones de añadido (DCB)
+  ## DCB append conditions
 
-  `query/1` define qué eventos se leen (SourcingCriteria).
-  `append_condition/1` define qué eventos concurrentes invalidarían la decisión
-  (AppendCriteria).
+  `query/1` defines which events to read (SourcingCriteria).
+  `append_condition/1` defines which concurrent events would invalidate the
+  decision (AppendCriteria).
 
-  Por defecto `append_condition/1` cae en `query/1` — simétrico, que es el valor
-  seguro. Se sobreescribe cuando los eventos concurrentes sólo pueden reforzar
-  el invariante y no deberían provocar conflicto (DCB asimétrico).
+  By default `append_condition/1` falls back to `query/1` — symmetric, which is
+  the safe value. Override it when concurrent events can only strengthen your
+  invariant and shouldn't cause a conflict (the asymmetric DCB pattern).
   """
 
   @callback query(command :: term()) :: term()

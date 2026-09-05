@@ -1,108 +1,109 @@
-# Lo aprendido construyendo
+# What we learned building
 
-Patrones y trampas reutilizables. Añade aquí lo que descubras, sin repetir lo que
-ya está. Este fichero se lee **antes** de cada rodaja: es la memoria que evita
-repetir errores entre iteraciones.
+Reusable patterns and traps. Add what you find here, without repeating what's
+already written. This file is read **before every slice**: it's the memory that
+stops mistakes repeating across iterations.
 
-Viene sembrado con lo que salió de construir el primer capítulo de un sistema
-real con este armazón. No son hipótesis — cada punto costó una vuelta.
+It ships seeded with what came out of building the first chapter of a real
+system on this framework. These aren't hypotheses — each one cost a round trip.
 
-## El armazón
+## The framework
 
-- `lib/my_app/`: `decide.ex`, `lectura.ex`, `state_change.ex`, `state_view.ex`,
-  `fact_event.ex`, `id.ex`. **No los toques** salvo que te lo pidan.
-- `Decide` espera a que lo escrito sea visible antes de volver: `Fact.append/3`
-  confirma entre 7 y 10 ms antes de que una lectura lo vea. Sin esa espera, una
-  LiveView que escribe y repinta enseña el estado viejo.
-- `Lectura.leer/2` lee por índice en vez de recorrer el ledger. Medido: consulta
-  por etiqueta sobre 20.000 eventos, **235 ms escaneando contra 0,07 ms por
-  índice**. Importa porque toda escritura empieza por una lectura.
-- Techo conocido y **no** resuelto en el armazón base: con la condición de
-  añadido anclada en 0 —lo que pasa cuando el pliegue no encuentra nada— FACT
-  recorre el ledger entero. Medido: 29 ms con 531 eventos, **4,5 s con 157.711**.
-  Se arregla anclando en una marca de visibilidad; la costura está documentada
-  en `Decide.read_and_fold/3`.
+- `lib/my_app/`: `decide.ex`, `reader.ex`, `state_change.ex`, `state_view.ex`,
+  `fact_event.ex`, `id.ex`. **Don't touch them** unless asked.
+- `Decide` waits until the write is visible before returning: `Fact.append/3`
+  confirms 7–10 ms before a subsequent read can see it. Without that wait, a
+  LiveView that writes and immediately repaints shows the old state.
+- `Reader.read/2` reads by index instead of scanning the ledger. Measured: a
+  tag query over 20,000 events, **235 ms scanning vs 0.07 ms by index**. It
+  matters because every write starts with a read.
+- Known ceiling, deliberately **not** solved in the base framework: with the
+  append condition anchored at 0 — which is what happens when the fold finds
+  nothing — FACT scans the entire ledger. Measured: 29 ms at 531 events,
+  **4.5 s at 157,711**. The fix is anchoring on a visibility mark; the seam is
+  documented in `Decide.read_and_fold/3`.
 
-## Sobre `slice.json`
+## About `slice.json`
 
-- **`tags: []` no significa «sin etiquetas», significa «sin derivar».** Salen de
-  los campos con `idAttribute: true`. Es la regla más importante del kit.
-- **El `slice.json` que escribe el bucle es un stub.** `fetchAndPersistSlices`
-  usa el endpoint **resumen**: seis campos, ~230 bytes, sin `fields`, sin
-  `events` y sin `specifications`. Refresca con
-  `python3 .build-kit/refrescar-rodajas.py` — es el paso 0 del `CLAUDE.md`.
-  Pasó de verdad, y la primera vez funcionó **por azar**: para las rodajas de
-  título ASCII el stub **sobrescribió** la definición completa, y sólo se
-  salvaron las que llevaban tildes o `·`, porque cayeron en otra carpeta.
-- El nombre de carpeta canónico es `title` sin espacios y en minúsculas,
-  **conservando tildes y `·`**. Normalizarlo a ASCII crea una carpeta paralela
-  que el bucle no mira.
-- La pantalla llega como metadatos: `title`, `fields`, `dependencies` y prosa.
-  **El diseño renderizado no viaja en el payload.**
-- La `description` de cada nodo lleva los invariantes redactados, y suele
-  explicar **qué reglas se retiraron y por qué**. Es lo más valioso del fichero
-  y es fácil saltárselo.
-- Los `examples` de los escenarios suelen estar **medidos contra sistemas
-  reales**. Si un test falla, sospecha del test antes que del dato.
+- **`tags: []` doesn't mean "no tags", it means "underived".** They come from
+  the fields with `idAttribute: true`. It's the most important rule in the kit.
+- **The `slice.json` the loop writes is a stub.** `fetchAndPersistSlices` uses
+  the **summary** endpoint: six fields, ~230 bytes, no `fields`, no `events`, no
+  `specifications`. Refresh with `python3 .build-kit/refresh-slices.py` — it's
+  step 0 in `CLAUDE.md`.
+  This happened for real, and the first time it worked **by luck**: for slices
+  with ASCII titles the stub **overwrote** the full definition, and only the ones
+  with accents or `·` survived, because they landed in a different folder.
+- The canonical folder name is `title` with spaces removed, lowercased,
+  **keeping accents and `·`**. Normalising to ASCII creates a parallel folder
+  the loop never looks at.
+- The screen arrives as metadata: `title`, `fields`, `dependencies` and prose.
+  **The rendered design does not travel in the payload.**
+- Each node's `description` carries the invariants written out in prose, and
+  often explains **which rules were removed and why**. It's the most valuable
+  thing in the file and the easiest to skip.
+- The scenarios' `examples` are often **measured against real systems**. If a
+  test fails, suspect the test before the data.
 
-## Trampas de FACT y del quality gate
+## FACT and quality-gate traps
 
-- **`event_data` vuelve con claves de cadena en snake_case.** Los eventos se
-  serializan con `Map.from_struct/1`, así que un `comprobacionId` del tablero se
-  lee `d["comprobacion_id"]`. Se comprueba mirando los ficheros de
-  `data/fact_db/events/<xx>/<id>`, que son JSON planos.
-- **El store tiene que existir antes de arrancar.** Si falta,
-  `Application.fact_db/0` **lanza** tras dos segundos y se lleva por delante lo
-  que estuviera haciendo el usuario. Por eso `fact.setup` va en los alias de
-  `test`, `setup` **y** `phx.server`.
-- **`mix precommit` compila con `--warnings-as-errors`.** Un `defp f(x, y \\ %{})`
-  cuyo valor por defecto no se usa nunca es un aviso, y tumba el gate.
+- **`event_data` comes back with string keys in snake_case.** Events are
+  serialised with `Map.from_struct/1`, so a `checkId` on the board reads as
+  `d["check_id"]`. You can confirm by looking at the files under
+  `data/fact_db/events/<xx>/<id>` — they're plain JSON.
+- **The store must exist before boot.** If it doesn't, `Application.fact_db/0`
+  **raises** after two seconds and takes down whatever the user was doing. That's
+  why `fact.setup` is in the aliases for `test`, `setup` **and** `phx.server`.
+- **`mix precommit` compiles with `--warnings-as-errors`.** A
+  `defp f(x, y \\ %{})` whose default is never used is a warning, and it fails
+  the gate.
 
-## Sobre los tests
+## About tests
 
-- **Nunca compares `Map.keys/1` con una lista.** El orden no está garantizado:
-  `assert Map.keys(fila) == [:a, :b, :c]` falla de forma **intermitente** — pasa
-  en local y tumba el gate más tarde. Se commiteó así una vez. Usa `MapSet`.
-- Un test que pasa puede estar mintiendo. Pasó uno que afirmaba que un botón
-  arranca deshabilitado: cierto sólo porque en las pruebas no hay JavaScript que
-  publique el estado inicial. **Cuando un test dependa de algo que el navegador
-  hace solo, simúlalo explícitamente.**
-- `Application.put_env` es global. Un test que la muta **no puede vivir en un
-  módulo `async: true`** junto a otro que lea esa misma configuración.
-- Con `nil`, HEEx **omite el atributo entero** en vez de pintarlo vacío, así que
-  la aserción obvia (`data-x=''`) no encuentra nada.
+- **Never compare `Map.keys/1` against a list.** The order isn't guaranteed:
+  `assert Map.keys(row) == [:a, :b, :c]` fails **intermittently** — it passes
+  locally and breaks the gate later. It got committed that way once. Use
+  `MapSet`.
+- A passing test can be lying. One asserted that a button starts disabled — true
+  only because there's no JavaScript in tests to publish the initial state.
+  **When a test depends on something the browser does on its own, simulate it
+  explicitly.**
+- `Application.put_env` is global. A test that mutates it **can't live in an
+  `async: true` module** alongside another that reads the same config.
+- With `nil`, HEEx **omits the attribute entirely** rather than rendering it
+  empty, so the obvious assertion (`data-x=''`) matches nothing.
 
-## Sobre las rodajas de lectura
+## About read slices
 
-- **Una cola TODO no se acota por etiqueta.** Es la excepción a «la etiqueta
-  acota la vista»: la consume un procesador, que no tiene sesión ni ninguna otra
-  identidad por la que filtrar. La consulta va por tipos.
-- **El fallo caro es un tipo que falte en `query/1`.** No revienta: deja el campo
-  en `nil` para siempre y nadie se entera. Conviene un test sobre `query/1`
-  —los tipos y las etiquetas— porque el resto de la suite pasa igual con la
-  consulta mal puesta.
-- **Una cola sin campo de estado es una decisión, no un olvido.** La pertenencia
-  a la lista *es* el estado.
+- **A TODO queue isn't scoped by tag.** It's the exception to "the tag scopes
+  the view": its consumer is a processor, which has no session or any other
+  identity to filter by. The query goes by types.
+- **The expensive failure is a type missing from `query/1`.** It doesn't blow
+  up: it leaves the field `nil` forever and nobody notices. Worth a test on
+  `query/1` itself — the types and the tags — because the rest of the suite
+  passes just the same with a wrong query.
+- **A queue with no status field is a decision, not an oversight.** Membership
+  of the list *is* the status.
 
-## Sobre cómo se reclaman las rodajas
+## About claiming slices
 
-- El bucle rechaza el cambio de estado si la rodaja ya está en el estado
-  destino: **no es un error**, es que otro agente la reclamó primero. No
-  reintentes la misma; pasa a la siguiente `Planned` del contexto actual.
-- Dos bucles sobre el mismo directorio comparten `progress.txt`, `index.json` y
-  el árbol de trabajo, y cada uno quiere su rama en el mismo checkout. Si vas a
-  correrlos en paralelo, **un worktree por agente**.
-- Un bucle ocioso puede no enterarse de una rodaja marcada `Planned` si el
-  evento de tiempo real no llega. Refrescar el índice local lo desbloquea.
+- The loop rejects the status change if the slice is already in the target
+  status: **that's not an error**, it means another agent claimed it first.
+  Don't retry that slice; move to the next `Planned` one in the current context.
+- Two loops on the same directory share `progress.txt`, `index.json` and the
+  working tree, and each wants its own branch in the same checkout. If you run
+  them in parallel, **one worktree per agent**.
+- An idle loop may not notice a slice marked `Planned` if the realtime event
+  doesn't arrive. Refreshing the local index unblocks it.
 
-## El encargo de pantalla
+## The screen brief
 
-- Si la rodaja trae `screens`, además del dominio se escribe
-  `docs/pantallas/<rodaja>.md`. Plantilla y reglas en `.build-kit/CLAUDE.md`.
-- **La sección que más vale es «Lo que el dominio NO da».** Es la que impide que
-  quien construya la vista se invente campos o se los pida al dominio sin
-  motivo. Escríbela aunque el resto quede corto.
-- Los **átomos de error** de `Core` van siempre: la pantalla los traduce a
-  mensajes y no los puede adivinar leyendo el `slice.json`.
-- Va en `docs/` y no en `.build-kit/` a propósito: `.build-kit/` se regenera con
-  cada fetch y el encargo tiene que sobrevivir.
+- If the slice has `screens`, alongside the domain you write
+  `docs/screens/<slice>.md`. Template and rules in `.build-kit/CLAUDE.md`.
+- **The section that earns its keep is "What the domain does NOT give you".**
+  It's what stops whoever builds the view from inventing fields or asking the
+  domain for them without cause. Write it even if the rest ends up short.
+- The **error atoms** from `Core` always go in: the screen translates them into
+  messages and can't guess them from `slice.json`.
+- It lives in `docs/` and not `.build-kit/` on purpose: `.build-kit/` is
+  regenerated on every fetch and the brief has to survive.

@@ -1,68 +1,64 @@
 defmodule MyApp.Decide do
   @moduledoc """
-  El motor de toda escritura: leer → plegar → decidir → añadir, con DCB y
-  concurrencia optimista.
+  The engine behind every write: read → fold → decide → append, with DCB and
+  optimistic concurrency.
 
-  Ante un conflicto de concurrencia repite el ciclo entero (releer, replegar,
-  redecidir, reañadir).
+  On a concurrency conflict it repeats the whole cycle (re-read, re-fold,
+  re-decide, re-append).
 
-  ## Leer lo que acabas de escribir
+  ## Reading what you just wrote
 
-  `Fact.append/3` confirma el añadido unos milisegundos antes de que el evento
-  sea visible para una lectura posterior (medido en `contextovnzla`: 7–10 ms).
-  La comprobación de parcelas es una LiveView que escribe y **acto seguido**
-  vuelve a leer para repintar: sin esperar, el visitante suelta el pin y la
-  página le sigue diciendo que no hay nada.
+  `Fact.append/3` confirms the append a few milliseconds before the event is
+  visible to a subsequent read (measured: 7–10 ms). If your app is LiveView and
+  a handler writes and then **immediately** re-reads to repaint, without a wait
+  the user clicks and the page still shows the old state.
 
-  Por eso `execute/4` no vuelve hasta que el evento que acaba de escribir se ve
-  en una lectura. La espera se hace aquí, en el único sitio por el que pasan
-  todas las escrituras, en vez de repartir esperas por los manejadores. Cuesta
-  unos milisegundos por comando, y a cambio todo lo de arriba puede dar por
-  hecho que lo que escribió ya está.
+  So `execute/4` doesn't return until the event it just wrote is visible to a
+  read. The wait lives here, in the one place every write passes through, rather
+  than being scattered across handlers. It costs a few milliseconds per command,
+  and in exchange everything above can assume what it wrote is there.
 
-  ## Dónde se ancla la condición de añadido, y el techo que tiene
+  ## Where the append condition is anchored, and its ceiling
 
-  El añadido va condicionado: «falla si apareció algún evento que case con esta
-  consulta **después de la posición P**». Hoy `P` es la posición del último
-  evento plegado, que vale **0** cuando no hay nada que plegar — y en una
-  comprobación nueva ése es el caso normal, porque nadie ha escrito antes sobre
-  esa parcela.
+  The append is conditional: "fail if any event matching this query appeared
+  **after position P**". Today `P` is the position of the last folded event,
+  which is **0** when there's nothing to fold — and for a brand-new entity that
+  is the normal case, because nobody has written about it before.
 
-  Ante `P = 0`, FACT recorre el ledger **entero** aplicando la consulta, dentro
-  del `handle_call` del único proceso que escribe. Es lineal sobre la historia
-  acumulada. Medido en `contextovnzla`:
+  With `P = 0`, FACT scans the **entire** ledger applying the query, inside the
+  `handle_call` of the single writing process. It's linear in accumulated
+  history. Measured:
 
-      ledger de     531 eventos → decidir  29 ms
-      ledger de   7.591 eventos → decidir 256 ms
-      ledger de  37.651 eventos → decidir  1,1 s
-      ledger de 157.711 eventos → decidir  4,5 s
+      ledger of     531 events → decide  29 ms
+      ledger of   7,591 events → decide 256 ms
+      ledger of  37,651 events → decide  1.1 s
+      ledger of 157,711 events → decide  4.5 s
 
-  **Aquí no duele todavía**, y por eso no está resuelto: NAMU escribe tres
-  eventos por comprobación y las inicia una persona, así que llegar a esas
-  cifras son decenas de miles de comprobaciones. A 531 eventos son 29 ms.
+  **It isn't solved here on purpose**, because most systems never reach those
+  numbers. When it starts to hurt, **the seam is `read_and_fold/3`**: have it
+  return `max(visibility_mark, last)` instead of `last`, where the mark is the
+  position up to which every FACT index has caught up (FACT announces it over
+  PubSub as `{:indexed, position}`).
 
-  Cuando duela, la solución ya está escrita en `contextovnzla`
-  (`lib/contexto_vnzla/visibilidad.ex`) y **la costura es esta función**:
-  `read_and_fold/3` devuelve el ancla, y basta con que devuelva
-  `max(MyApp.Visibilidad.hasta(db), ultima)` en vez de `ultima`. La marca hay que
-  pedirla **antes** de leer, no después: así todo lo que la lectura pueda
-  devolver queda por debajo de ella y la condición sigue vigilando de la marca
-  en adelante, que es donde estaría el escritor concurrente. Con eso, la misma
-  decisión sobre 157.711 eventos baja de 4,5 s a 8 ms.
+  Ask for the mark **before** reading, not after: that way everything the read
+  can return sits below it, and the condition still watches from the mark
+  onwards — which is where a concurrent writer would be. With that, the same
+  decision over 157,711 events drops from 4.5 s to 8 ms.
 
-  Y el ancla no puede ser la cabeza del ledger: `MyApp.Lectura` lee por índice, y
-  los índices de FACT se mantienen de forma asíncrona — anclar en la cabeza
-  sería afirmar haber visto eventos que el índice todavía no publicaba.
+  And the anchor can't be the head of the ledger: `MyApp.Reader` reads **by
+  index**, and FACT's indices are maintained asynchronously. Anchoring at the
+  head would be claiming to have seen events the index hadn't published yet.
   """
 
   require Logger
 
   @max_retries 3
 
-  # Cota de la espera de visibilidad. El retardo medido ronda los 10 ms; 2 s es
-  # un margen absurdo a propósito, para que sólo se agote si algo va muy mal.
-  @visibilidad_intentos 400
-  @visibilidad_espera_ms 5
+  # Bound on the visibility wait. The measured delay is around 10 ms; 2 s is a
+  # deliberately absurd margin, so it only ever runs out if something is badly
+  # wrong.
+  @visibility_attempts 400
+  @visibility_wait_ms 5
 
   def execute(db, core, cmd, opts \\ []) do
     extra_tags = Keyword.get(opts, :extra_tags, [])
@@ -85,11 +81,11 @@ defmodule MyApp.Decide do
 
         case Fact.append(db, fact_events, condition) do
           {:ok, position} ->
-            esperar_visibilidad(db, fact_events, position)
+            await_visibility(db, fact_events, position)
             {:ok, events}
 
           {:error, %Fact.ConcurrencyError{}} when retries > 0 ->
-            Logger.debug("conflicto de concurrencia, reintentando (quedan #{retries})")
+            Logger.debug("concurrency conflict, retrying (#{retries} left)")
             do_execute(db, core, cmd, extra_tags, retries - 1)
 
           {:error, reason} ->
@@ -101,47 +97,47 @@ defmodule MyApp.Decide do
     end
   end
 
-  # Espera a que los eventos recién añadidos aparezcan en una lectura.
+  # Waits until the freshly appended events show up in a read.
   #
-  # La consulta se construye a partir de los propios eventos (su tipo y sus
-  # etiquetas), no de `core.query/1`: hay rodajas cuya consulta de decisión no
-  # incluye el tipo que emiten, y esperar sobre esa consulta no vería nunca lo
-  # escrito. Como las etiquetas llevan siempre un id único
-  # (`comprobacion:<uuid>`), la consulta devuelve un puñado de eventos y la
-  # espera es barata.
-  defp esperar_visibilidad(db, fact_events, position) do
-    consulta =
+  # The query is built from the events themselves — their type and their tags —
+  # and not from `core.query/1`: some slices' decision query doesn't include the
+  # type they emit (a slice that reads `NewsDrafted` and writes `NewsEdited`),
+  # and waiting on that query would never see what was written. Since tags
+  # always carry a unique id, the query returns a handful of events and the wait
+  # is cheap.
+  defp await_visibility(db, fact_events, position) do
+    query =
       fact_events
       |> Enum.map(fn e -> Fact.QueryItem.types([e.type]) |> Fact.QueryItem.tags(e.tags) end)
       |> Fact.QueryItem.join()
 
-    esperar(db, consulta, position, @visibilidad_intentos)
+    await(db, query, position, @visibility_attempts)
   end
 
-  defp esperar(_db, _consulta, position, 0) do
-    Logger.warning("el evento en la posición #{position} no se hizo visible a tiempo")
+  defp await(_db, _query, position, 0) do
+    Logger.warning("the event at position #{position} did not become visible in time")
     :timeout
   end
 
-  defp esperar(db, consulta, position, intentos) do
+  defp await(db, query, position, attempts) do
     visible =
       db
-      |> MyApp.Lectura.leer(consulta)
-      |> Enum.reduce(0, fn event, maximo -> max(event["store_position"] || 0, maximo) end)
+      |> MyApp.Reader.read(query)
+      |> Enum.reduce(0, fn event, highest -> max(event["store_position"] || 0, highest) end)
 
     if visible >= position do
       :ok
     else
-      Process.sleep(@visibilidad_espera_ms)
-      esperar(db, consulta, position, intentos - 1)
+      Process.sleep(@visibility_wait_ms)
+      await(db, query, position, attempts - 1)
     end
   end
 
-  # Devuelve el estado plegado y el ancla para la condición de añadido.
-  # Ver el moduledoc: el ancla es hoy la posición del último evento plegado, y
-  # aquí es donde se sube a la marca de visibilidad cuando el ledger crezca.
+  # Returns the folded state and the anchor for the append condition.
+  # See the moduledoc: today the anchor is the last folded event's position, and
+  # this is where you raise it to the visibility mark once the ledger grows.
   defp read_and_fold(db, core, cmd) do
-    MyApp.Lectura.leer(db, core.query(cmd))
+    MyApp.Reader.read(db, core.query(cmd))
     |> Enum.reduce({core.initial_state(), 0}, fn event, {state, _pos} ->
       {core.apply_event(state, event), event["store_position"] || 0}
     end)

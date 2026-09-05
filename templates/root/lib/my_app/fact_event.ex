@@ -1,4 +1,4 @@
 defprotocol MyApp.FactEvent do
-  @doc "Convierte un evento de dominio en un mapa listo para Fact: `:type`, `:data` y `:tags`."
+  @doc "Turns a domain event struct into a Fact-ready map with `:type`, `:data` and `:tags`."
   def to_fact(event)
 end

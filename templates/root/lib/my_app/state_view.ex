@@ -1,8 +1,9 @@
 defmodule MyApp.StateView do
   @moduledoc """
-  Comportamiento de las rodajas de lectura (modelos de lectura).
+  Behaviour for read slices (read models).
 
-  Elegir de la historia y plegar hasta el estado actual.
+  Pick from history, fold into current state. There is no table and no
+  materialised projection: the view is computed on every call.
   """
 
   @callback query(context :: term()) :: term()

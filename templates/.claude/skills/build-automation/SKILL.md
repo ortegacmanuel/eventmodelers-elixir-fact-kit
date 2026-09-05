@@ -1,122 +1,122 @@
 ---
 name: build-automation
-description: Implementa una rodaja de automatismo (un procesador que vigila una cola TODO, llama a un sistema externo y registra el resultado como hecho propio) en Elixir con el event store FACT, a partir de un slice.json
+description: Implements an automation slice (a processor that watches a TODO queue, calls an external system and records the result as our own fact) in Elixir with the FACT event store, from a slice.json
 ---
 
-# Construir una rodaja de automatismo
+# Build an automation slice
 
-> Antes de nada, lee la definición en `.build-kit/.slices/{Contexto}/{rodaja}/slice.json`.
-> Ese fichero es la **fuente de verdad**. Nunca inventes campos que no estén ahí.
+> Before anything else, read the definition at
+> `.build-kit/.slices/{Context}/{slice}/slice.json`. That file is the **source of
+> truth**. Never invent fields that aren't there.
 
-> Y lee `.build-kit/CLAUDE.md`. Esta forma de rodaja es la que más se desvía de
-> lo que parece decir el tablero, así que las tres reglas de ahí importan aquí
-> el doble.
+> And read `.build-kit/CLAUDE.md`. This slice shape deviates most from what the
+> board appears to say, so those three rules matter double here.
 
 ---
 
-## Qué es una rodaja de automatismo
+## What an automation slice is
 
-Nadie pulsa nada. Un procesador vigila una **cola TODO** —que es un modelo de
-lectura, no una tabla—, hace el trabajo y **escribe un hecho propio**.
+Nobody clicks anything. A processor watches a **TODO queue** — which is a read
+model, not a table — does the work, and **writes a fact of our own**.
 
 ```
-Cola TODO (STATE_VIEW)  →  Processor (GenServer)
+TODO queue (STATE_VIEW)  →  Processor (GenServer)
                               → Task.Supervisor.async_nolink
-                                  → llamada externa
-                                  → Context.<verbo>(...)  →  Decide  →  evento
+                                  → external call
+                                  → Context.<verb>(...)  →  Decide  →  event
 ```
 
-Cinco ficheros: los cuatro de una rodaja de escritura, más `processor.ex`.
-**Construye primero los cuatro con `/build-state-change`**, y vuelve aquí para
-el procesador. Este skill sólo cubre lo que aquélla no.
+Five files: the four of a write slice, plus `processor.ex`.
+**Build the four first with `/build-state-change`**, then come back here for the
+processor. This skill only covers what that one doesn't.
 
 ---
 
-## Paso 1 — La cola TODO existe y no la construyes tú
+## Step 1 — The TODO queue exists and you don't build it
 
-`processors[].dependencies` apunta a un READMODEL que es la cola. Suele ser una
-rodaja aparte en el tablero, con su propio `slice.json`.
+`processors[].dependencies` points at a READMODEL that is the queue. It's usually
+a separate slice on the board, with its own `slice.json`.
 
-**Si esa rodaja no está construida, para.** Constrúyela primero con
-`/build-state-view`, o invoca `request-feedback` si no está en el tablero.
+**If that slice isn't built, stop.** Build it first with `/build-state-view`, or
+invoke `request-feedback` if it isn't on the board at all.
 
-Una cola TODO es «lo pedido menos lo resuelto»: pliega el evento que abre el
-trabajo y el que lo cierra, y deja fuera los que ya tienen cierre. **Es una
-consulta, no una resta** — no lleves un contador.
+A TODO queue is "what was asked minus what was resolved": it folds the event that
+opens the work and the one that closes it, and leaves out the ones already
+closed. **It's a query, not a subtraction** — don't keep a counter.
 
 ---
 
-## Paso 2 — La capa de anticorrupción, y en qué dirección va
+## Step 2 — The anti-corruption layer, and which way it points
 
-Cuando la rodaja llama a un sistema externo, la tentación es modelar «recibimos
-esto». **No lo hagas.**
+When the slice calls an external system, the temptation is to model "we received
+this". **Don't.**
 
-> **Nuestro hecho de dominio manda y la respuesta externa lo rellena**, no al
-> revés.
+> **Our domain fact leads and the external response fills it in**, not the other
+> way round.
 
-La diferencia no es de estilo. Si el evento es «la respuesta de X menos cosas»,
-un cambio en X se propaga por todo el sistema. Si el evento es nuestro hecho y X
-es el insumo, un cambio en X sólo mueve el mapeo, en un sitio.
+This isn't a style preference. If the event is "X's response minus some fields",
+a change in X propagates through the whole system. If the event is our fact and X
+is the input, a change in X only moves the mapping, in one place.
 
-Consecuencias concretas:
+Concrete consequences:
 
-- **Un solo evento, no dos.** No emitas un `RespuestaDeXRecibida` además del
-  hecho de dominio: «recibimos esto» no es un hecho de negocio, y darle nodo
-  propio mete la forma ajena en la línea de tiempo — que es justo lo que una
-  capa de anticorrupción evita.
-- **El cuerpo crudo viaja como atributo técnico** (`respuestaCruda`,
-  `technicalAttribute: true`) para forense y para poder rederivar. No se
-  proyecta a ninguna vista.
-- **Los nombres de campo son de dominio**, no de la API externa. Nunca
-  `risk_pcrop`: `veredicto`. Nunca `eufo2020`: `coberturaForestal2020`. Qué capa
-  lo midió viaja en un campo de procedencia, no en el nombre.
-- **La preposición del evento importa.** `…EvaluadaConX` dice que X calculó y
-  nosotros valoramos. `…EvaluadaPorX` diría que X hizo nuestra valoración. El
-  tablero ya eligió: respétalo exactamente.
+- **One event, not two.** Don't emit an `XResponseReceived` alongside the domain
+  fact: "we received this" isn't a business fact, and giving it its own node
+  drags the foreign shape onto the timeline — which is exactly what an
+  anti-corruption layer prevents.
+- **The raw body travels as a technical attribute** (`rawResponse`,
+  `technicalAttribute: true`) for forensics and for re-derivation. It is not
+  projected into any view.
+- **Field names are domain names**, not the external API's. Never `risk_pcrop`:
+  `verdict`. Which layer measured it travels in a provenance field, not in the
+  name.
+- **The event name's preposition matters.** `…EvaluatedWithX` says X computed and
+  we judged. `…EvaluatedByX` would say X made our judgement. The board already
+  chose: match it exactly.
 
-### Dónde va la fuente: en el nombre o en un campo
+### Where the source goes: in the name or in a field
 
-| quién dictamina | dónde va |
+| who judges | where it goes |
 |---|---|
-| un tercero evalúa y devuelve un veredicto | en el **nombre del evento** |
-| calculamos nosotros contra un fichero | en un campo de **procedencia** (`versionDatos`) |
+| a third party evaluates and returns a verdict | in the **event name** |
+| we compute it ourselves against a file | in a **provenance field** (`dataVersion`) |
 
-En el segundo caso **no hay campo `fuente`**: sería un error de categoría, daría
-a entender que hay un evaluador externo donde no lo hay. Y el campo de
-procedencia se describe solo — `"Provita ANP 2023-07-29"`, no `"2023-07-29"`.
+In the second case there is **no `source` field**: it would be a category error,
+implying an external evaluator where there is none. And the provenance field is
+self-describing — `"Provita ANP 2023-07-29"`, not `"2023-07-29"`.
 
-### La traducción va en línea
+### Translation happens inline
 
-El tablero puede mostrar cuatro o seis rodajas para una llamada externa
-(petición → evento externo → vista de respuesta → traductor → comando → evento).
-**En el código es un procesador que llama y registra.** El modelo prioriza la
-claridad conceptual y la visibilidad de la frontera; la implementación prioriza
-no tener handlers que no hacen nada.
+The board may show four or six slices for one external call (request → external
+event → response view → translator → internal command → internal event). **In
+code it's one processor that calls and records.** The model prioritises
+conceptual clarity and making the system boundary visible; the implementation
+prioritises not having handlers that do nothing.
 
-Si la llamada externa fuera de verdad asíncrona —webhook entrante—, el punto de
-entrada es un **controlador de Phoenix**, no un procesador.
+If the external call were genuinely asynchronous — an inbound webhook — the entry
+point is a **Phoenix controller**, not a processor. Use `/build-webhook`.
 
 ---
 
-## Paso 3 — `processor.ex`
+## Step 3 — `processor.ex`
 
-**Fichero:** `lib/my_app/slices/<rodaja>/processor.ex`
+**File:** `lib/my_app/slices/<slice>/processor.ex`
 
 ```elixir
-defmodule MyApp.Slices.<Rodaja>.Processor do
+defmodule MyApp.Slices.<Slice>.Processor do
   @moduledoc """
-  Automatismo: vigila <la cola>, <hace el trabajo> y registra <el evento>.
+  Automation: watches <the queue>, <does the work> and records <the event>.
 
-  <Y las cifras que justifican el intervalo y los plazos. Un `@poll_interval`
-  sin medición al lado es un número inventado.>
+  <And the numbers that justify the interval and the timeouts. A `@poll_interval`
+  with no measurement beside it is an invented number.>
   """
 
   use GenServer
 
   require Logger
 
-  alias MyApp.Slices.<Cola>.Context, as: Cola
-  alias MyApp.Slices.<Rodaja>.Context, as: <Rodaja>
+  alias MyApp.Slices.<Queue>.Context, as: Queue
+  alias MyApp.Slices.<Slice>.Context, as: <Slice>
 
   @poll_interval :timer.seconds(5)
 
@@ -124,8 +124,8 @@ defmodule MyApp.Slices.<Rodaja>.Processor do
 
   @impl true
   def init(opts) do
-    if Keyword.get(opts, :arrancar?, true) do
-      programar()
+    if Keyword.get(opts, :start?, true) do
+      schedule()
       {:ok, %{}}
     else
       {:ok, %{}}
@@ -134,100 +134,100 @@ defmodule MyApp.Slices.<Rodaja>.Processor do
 
   @impl true
   def handle_info(:poll, state) do
-    procesar_pendientes()
-    programar()
+    process_pending()
+    schedule()
     {:noreply, state}
   end
 
-  # Las tareas van con `async_nolink`: su resultado y su caída llegan como
-  # mensajes, y hay que atenderlos o el GenServer se llena de correo sin leer.
-  def handle_info({ref, _resultado}, state) when is_reference(ref), do: {:noreply, state}
+  # Tasks use `async_nolink`: their result and their crash arrive as messages,
+  # and you have to handle them or the GenServer fills up with unread mail.
+  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
   def handle_info({:DOWN, _ref, :process, _pid, :normal}, state), do: {:noreply, state}
 
-  def handle_info({:DOWN, _ref, :process, _pid, motivo}, state) do
-    Logger.error("tarea de <rodaja> falló: #{inspect(motivo)}")
+  def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
+    Logger.error("<slice> task failed: #{inspect(reason)}")
     {:noreply, state}
   end
 
-  def handle_info(_otro, state), do: {:noreply, state}
+  def handle_info(_other, state), do: {:noreply, state}
 
-  defp procesar_pendientes do
-    Enum.each(Cola.pendientes(), fn item ->
-      Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> procesar(item) end)
+  defp process_pending do
+    Enum.each(Queue.pending(), fn item ->
+      Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> process(item) end)
     end)
   rescue
-    e -> Logger.warning("el sondeo falló: #{Exception.message(e)}")
+    e -> Logger.warning("poll failed: #{Exception.message(e)}")
   end
 
-  defp procesar(item) do
-    case llamar_al_externo(item) do
-      {:ok, respuesta} -> <Rodaja>.<verbo>(item.<id>, respuesta)
-      {:error, motivo} -> Logger.error("<externo> falló para #{item.<id>}: #{inspect(motivo)}")
+  defp process(item) do
+    case call_external(item) do
+      {:ok, response} -> <Slice>.<verb>(item.<id>, response)
+      {:error, reason} -> Logger.error("<external> failed for #{item.<id>}: #{inspect(reason)}")
     end
   end
 end
 ```
 
-Reglas que no se negocian:
+Non-negotiable rules:
 
-- **La llamada externa va dentro de la `Task`, nunca en el `GenServer`.** Un
-  `Req.post` en `handle_info` bloquea el sondeo entero.
-- **`arrancar?: true` por defecto, configurable.** En tests se apaga: un
-  procesador vivo durante la suite hace llamadas de red reales.
-- **`Req`, nunca otra cosa.** Con `receive_timeout` explícito si la llamada es
-  lenta.
-- **Añádelo al árbol de supervisión** en `lib/my_app/application.ex`, después de
-  `Fact.Supervisor` y de `Task.Supervisor`, con
-  `Application.get_env(:my_app, :<rodaja>, [])`.
-- **Los secretos salen de `config/runtime.exs`**, nunca del código. Si la clave
-  no está, el procesador arranca y registra el fallo; no revienta el arranque de
-  la aplicación entera.
+- **The external call goes inside the `Task`, never in the `GenServer`.** A
+  `Req.post` in `handle_info` blocks the whole poll.
+- **`start?: true` by default, configurable.** Switch it off in tests: a live
+  processor during the suite makes real network calls.
+- **`Req`, never anything else.** With an explicit `receive_timeout` if the call
+  is slow.
+- **Add it to the supervision tree** in `lib/my_app/application.ex`, after
+  `Fact.Supervisor` and `Task.Supervisor`, with
+  `Application.get_env(:my_app, :<slice>, [])`.
+- **Secrets come from `config/runtime.exs`**, never from code. If the key is
+  missing, the processor should start and log the failure — not take down the
+  whole application's boot.
 
-### El fallo del externo es un caso de dominio
+### The external system failing is a domain case
 
-Si `slice.json` modela un evento de fallo, emítelo. Si no lo modela, **regístralo
-y deja el ítem en la cola** — no inventes un evento de fallo: es una decisión de
-modelo, no de implementación, y le toca al tablero.
+If `slice.json` models a failure event, emit it. If it doesn't, **log it and
+leave the item in the queue** — don't invent a failure event: that's a modelling
+decision, not an implementation one, and it belongs to the board.
 
-Y si el fallo del externo produce un resultado **tranquilizador** en vez de un
-error visible, dilo en el `@moduledoc` con todas las letras. Es la clase de fallo
-que nadie descubre a tiempo.
-
----
-
-## Paso 4 — Tests
-
-**El procesador no se prueba con red.** Lo que se prueba es el `Core` de su
-rodaja de escritura, con `/build-state-change`, más:
-
-- Que la cola devuelve lo pendiente y **deja de devolverlo** una vez resuelto.
-- El mapeo de la respuesta externa a campos de dominio, como función pura. Sácalo
-  a una función aparte (`defp a_dominio(respuesta)`) precisamente para poder
-  probarlo sin red.
-
-Con `arrancar?: false` en `config/test.exs` para esta rodaja.
+And if the external system failing produces a **reassuring** result rather than a
+visible error, say so in the `@moduledoc` in plain words. That's the class of
+failure nobody discovers in time.
 
 ---
 
-## Paso 5 — Quality gate
+## Step 4 — Tests
+
+**The processor isn't tested with the network.** What gets tested is its write
+slice's `Core`, via `/build-state-change`, plus:
+
+- That the queue returns what's pending and **stops returning it** once resolved.
+- The mapping from external response to domain fields, as a pure function. Pull
+  it out into its own function (`defp to_domain(response)`) precisely so it can
+  be tested without the network.
+
+With `start?: false` in `config/test.exs` for this slice.
+
+---
+
+## Step 5 — Quality gate
 
 ```
 mix precommit
-mix test test/my_app/slices/<rodaja>/
+mix test test/my_app/slices/<slice>/
 ```
 
 ---
 
-## Verificación final contra `slice.json`
+## Final check against `slice.json`
 
-- [ ] Los cuatro ficheros de escritura están, hechos con `/build-state-change`.
-- [ ] **Un solo evento de dominio**, no uno de «respuesta recibida».
-- [ ] Los nombres de campo son de dominio, no de la API externa.
-- [ ] El cuerpo crudo va como atributo técnico y **no** se proyecta.
-- [ ] La preposición del nombre del evento es la del tablero (`Con…` / `Por…`).
-- [ ] La llamada externa está dentro de la `Task`, no en el `GenServer`.
-- [ ] Los tres `handle_info` de las tareas están (`{ref, _}`, `:DOWN` normal,
-      `:DOWN` con motivo).
-- [ ] El procesador está en el árbol de supervisión y apagado en tests.
-- [ ] Los secretos vienen de `runtime.exs`.
-- [ ] El mapeo respuesta → dominio es una función pura y tiene test.
+- [ ] The four write files exist, built with `/build-state-change`.
+- [ ] **One domain event**, not a "response received" one.
+- [ ] Field names are domain names, not the external API's.
+- [ ] The raw body is a technical attribute and is **not** projected.
+- [ ] The event name's preposition matches the board (`With…` / `By…`).
+- [ ] The external call is inside the `Task`, not in the `GenServer`.
+- [ ] All three task `handle_info` clauses are present (`{ref, _}`, `:DOWN`
+      normal, `:DOWN` with a reason).
+- [ ] The processor is in the supervision tree and switched off in tests.
+- [ ] Secrets come from `runtime.exs`.
+- [ ] The response → domain mapping is a pure function and has a test.

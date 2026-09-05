@@ -1,136 +1,136 @@
 ---
 name: build-webhook
-description: Implementa una rodaja cuyo disparador es un evento externo entrante — un webhook — en Elixir/Phoenix con el event store FACT, a partir de un slice.json
+description: Implements a slice whose trigger is an inbound external event — a webhook — in Elixir/Phoenix with the FACT event store, from a slice.json
 ---
 
-# Construir una rodaja de webhook
+# Build a webhook slice
 
-> Antes de nada, lee la definición en `.build-kit/.slices/{Contexto}/{rodaja}/slice.json`.
-> Ese fichero es la **fuente de verdad**. Nunca inventes campos que no estén ahí.
+> Before anything else, read the definition at
+> `.build-kit/.slices/{Context}/{slice}/slice.json`. That file is the **source of
+> truth**. Never invent fields that aren't there.
 
-> Y lee `.build-kit/CLAUDE.md`. Las tres reglas que `slice.json` no dice aplican
-> aquí igual que en cualquier otra rodaja de escritura.
+> And read `.build-kit/CLAUDE.md`. The three rules `slice.json` doesn't state
+> apply here exactly as in any other write slice.
 
 ---
 
-## Cuándo es esta forma y no un automatismo
+## When it's this shape and not an automation
 
-La diferencia no es «hay un sistema externo»: es **quién empieza**.
+The difference isn't "there's an external system": it's **who starts**.
 
-| | quién empieza | punto de entrada |
+| | who starts | entry point |
 |---|---|---|
-| **Automatismo** | nosotros, sondeando una cola TODO | `processor.ex` (GenServer) |
-| **Webhook** | el sistema externo, cuando le parece | un **controlador de Phoenix** |
+| **Automation** | us, polling a TODO queue | `processor.ex` (GenServer) |
+| **Webhook** | the external system, whenever it likes | a **Phoenix controller** |
 
-Si la rodaja describe algo que *nos llega* —una confirmación de pago, un
-resultado que un servicio calculó y devuelve más tarde, un cambio de estado en
-otro sistema— es un webhook. Y entonces **no hay procesador**: no hay nada que
-sondear, porque no somos nosotros los que preguntamos.
+If the slice describes something that *arrives at us* — a payment confirmation, a
+result another service computed and returns later, a status change in another
+system — it's a webhook. And then **there is no processor**: there's nothing to
+poll, because we aren't the ones asking.
 
-Un error típico es montar un GenServer para esto. Sobra: el que llama ya trae el
-dato.
-
----
-
-## Paso 1 — Los cuatro ficheros de escritura
-
-Un webhook es **una rodaja de escritura con otro disparador**. Construye primero
-comando, evento, `core.ex` y `context.ex` con `/build-state-change`, y vuelve
-aquí para la capa web. Este skill sólo cubre lo que aquélla no.
-
-Aplica todo lo de allí sin excepción: las etiquetas salen de `idAttribute: true`,
-los identificadores e instantes se generan en `context.ex`, y la validación va
-entera en `core.ex`.
+A common mistake is standing up a GenServer for this. It's redundant: the caller
+already brings the data.
 
 ---
 
-## Paso 2 — La traducción, y en qué dirección va
+## Step 1 — The four write files
 
-Igual que en un automatismo: **nuestro hecho de dominio manda y el cuerpo del
-webhook lo rellena**, no al revés.
+A webhook is **a write slice with a different trigger**. Build the command, the
+event, `core.ex` and `context.ex` with `/build-state-change` first, then come
+back here for the web layer. This skill only covers what that one doesn't.
 
-- **Un solo evento.** No emitas un `WebhookRecibido` además del hecho de
-  negocio: «nos llegó algo» no es un hecho de dominio, y darle evento propio
-  mete la forma ajena en la línea de tiempo.
-- **El cuerpo crudo va como atributo técnico** (`respuestaCruda`,
-  `technicalAttribute: true`), para forense y para poder rederivar. No se
-  proyecta a ninguna vista.
-- **Los nombres de campo son de dominio**, no los del proveedor.
-- **La traducción es una función pura** en `context.ex` o en un módulo aparte:
-  `defp a_dominio(cuerpo)`. Sácala para poder probarla sin HTTP — es la única
-  parte de un webhook que merece test unitario de verdad.
+Everything from there applies without exception: tags come from
+`idAttribute: true`, identifiers and timestamps are generated in `context.ex`,
+and all validation lives in `core.ex`.
 
 ---
 
-## Paso 3 — El controlador
+## Step 2 — The translation, and which way it points
 
-**Fichero:** `lib/my_app_web/controllers/<rodaja>_webhook_controller.ex`
+Same as an automation: **our domain fact leads and the webhook body fills it
+in**, not the other way round.
+
+- **One event.** Don't emit a `WebhookReceived` alongside the business fact:
+  "something arrived" isn't a domain fact, and giving it its own event drags the
+  foreign shape onto the timeline.
+- **The raw body travels as a technical attribute** (`rawBody`,
+  `technicalAttribute: true`), for forensics and re-derivation. It is not
+  projected into any view.
+- **Field names are domain names**, not the provider's.
+- **The translation is a pure function** in `context.ex` or its own module:
+  `defp to_domain(body)`. Pull it out so it can be tested without HTTP — it's the
+  only part of a webhook that really deserves a unit test.
+
+---
+
+## Step 3 — The controller
+
+**File:** `lib/my_app_web/controllers/<slice>_webhook_controller.ex`
 
 ```elixir
-defmodule MyAppWeb.<Rodaja>WebhookController do
+defmodule MyAppWeb.<Slice>WebhookController do
   @moduledoc """
-  Punto de entrada de <el sistema externo>.
+  Entry point for <the external system>.
 
-  <Qué manda, cuándo, y qué espera de vuelta. Si el proveedor reintenta ante un
-  fallo, dilo aquí: cambia por completo cómo hay que responder.>
+  <What it sends, when, and what it expects back. If the provider retries on
+  failure, say so here: it completely changes how you must respond.>
   """
 
   use MyAppWeb, :controller
 
   require Logger
 
-  alias MyApp.Slices.<Rodaja>.Context, as: <Rodaja>
+  alias MyApp.Slices.<Slice>.Context, as: <Slice>
 
   def webhook(conn, params) do
-    case <Rodaja>.<verbo>(params) do
+    case <Slice>.<verb>(params) do
       {:ok, _id} ->
         send_resp(conn, 200, "OK")
 
-      {:error, motivo} ->
-        # 200 a propósito: el cuerpo llegó y lo hemos entendido; que nosotros no
-        # podamos procesarlo no es culpa de quien llama, y devolver 4xx o 5xx
-        # hace que el proveedor reintente para siempre el mismo cuerpo malo.
-        Logger.error("webhook de <externo> rechazado: #{inspect(motivo)}")
+      {:error, reason} ->
+        # 200 on purpose: the body arrived and we understood it. That we can't
+        # process it isn't the caller's fault, and returning 4xx or 5xx makes
+        # the provider retry the same bad body forever.
+        Logger.error("<external> webhook rejected: #{inspect(reason)}")
         send_resp(conn, 200, "OK")
     end
   end
 end
 ```
 
-### Qué código devolver, que no es obvio
+### Which status code to return, which isn't obvious
 
-- **200 aunque el dominio rechace.** El proveedor sólo sabe si le llegó, no si
-  nos sirvió. Un 4xx o 5xx lo pone a reintentar el mismo cuerpo que ya sabemos
-  que no vale.
-- **Responde rápido y no bloquees.** Si el trabajo es largo, escribe el hecho y
-  deja lo demás a un automatismo — el webhook sólo tiene que registrar que llegó.
-- **Devuelve 401 sólo cuando la firma no valida.** Ese sí es un problema del que
-  llama.
+- **200 even when the domain rejects.** The provider only knows whether it
+  arrived, not whether it was useful to us. A 4xx or 5xx sets it retrying a body
+  we already know is no good.
+- **Answer fast and don't block.** If the work is long, write the fact and leave
+  the rest to an automation — the webhook only has to record that it arrived.
+- **Return 401 only when the signature fails.** That one really is the caller's
+  problem.
 
 ---
 
-## Paso 4 — Verificar la firma, en un plug
+## Step 4 — Verify the signature, in a plug
 
-**Nunca en el controlador.** La verificación necesita el **cuerpo crudo**, y
-para cuando el controlador lo ve, `Plug.Parsers` ya lo ha decodificado y
-tirado.
+**Never in the controller.** Verification needs the **raw body**, and by the time
+the controller sees it, `Plug.Parsers` has already decoded and discarded it.
 
-Dos plugs:
+Two plugs:
 
-**`lib/my_app_web/plugs/cache_raw_body.ex`** — guarda el cuerpo antes de
-parsearlo, vía la opción `:body_reader` de `Plug.Parsers` en `endpoint.ex`.
+**`lib/my_app_web/plugs/cache_raw_body.ex`** — stashes the body before parsing,
+via `Plug.Parsers`' `:body_reader` option in `endpoint.ex`.
 
-**`lib/my_app_web/plugs/<externo>_webhook_signature.ex`** — compara la firma con
-el cuerpo guardado y **corta con 401** si no cuadra.
+**`lib/my_app_web/plugs/<external>_webhook_signature.ex`** — compares the
+signature against the stashed body and **halts with 401** if it doesn't match.
 
 ```elixir
-defmodule MyAppWeb.Plugs.<Externo>WebhookSignature do
+defmodule MyAppWeb.Plugs.<External>WebhookSignature do
   @moduledoc """
-  Verifica la firma de <externo> contra el cuerpo **crudo**.
+  Verifies <external>'s signature against the **raw** body.
 
-  Va en un plug y no en el controlador porque `Plug.Parsers` ya ha consumido el
-  cuerpo cuando el controlador entra, y firmar sobre el JSON re-serializado no
-  coincide: el orden de las claves y los espacios cambian.
+  It's a plug and not the controller because `Plug.Parsers` has already consumed
+  the body by the time the controller runs, and signing over re-serialised JSON
+  doesn't match: key order and whitespace change.
   """
 
   import Plug.Conn
@@ -138,92 +138,92 @@ defmodule MyAppWeb.Plugs.<Externo>WebhookSignature do
   def init(opts), do: opts
 
   def call(conn, _opts) do
-    secreto = Application.get_env(:my_app, :<externo>)[:webhook_secret]
+    secret = Application.get_env(:my_app, :<external>)[:webhook_secret]
 
-    with [firma] <- get_req_header(conn, "x-<externo>-signature"),
-         crudo when is_binary(crudo) <- conn.assigns[:raw_body],
-         true <- valida?(firma, crudo, secreto) do
+    with [signature] <- get_req_header(conn, "x-<external>-signature"),
+         raw when is_binary(raw) <- conn.assigns[:raw_body],
+         true <- valid?(signature, raw, secret) do
       conn
     else
-      _ -> conn |> send_resp(401, "firma inválida") |> halt()
+      _ -> conn |> send_resp(401, "invalid signature") |> halt()
     end
   end
 
-  # `Plug.Crypto.secure_compare/2` y no `==`: comparar cadenas con `==` filtra
-  # información por el tiempo que tarda.
-  defp valida?(firma, crudo, secreto) do
-    esperada = :crypto.mac(:hmac, :sha256, secreto, crudo) |> Base.encode16(case: :lower)
-    Plug.Crypto.secure_compare(firma, esperada)
+  # `Plug.Crypto.secure_compare/2` and not `==`: comparing strings with `==`
+  # leaks information through how long it takes.
+  defp valid?(signature, raw, secret) do
+    expected = :crypto.mac(:hmac, :sha256, secret, raw) |> Base.encode16(case: :lower)
+    Plug.Crypto.secure_compare(signature, expected)
   end
 end
 ```
 
-**Si `slice.json` no dice nada de firma, pregunta.** Un webhook sin verificar es
-un endpoint público que escribe en el event store: cualquiera puede inventarse
-hechos de dominio. Invoca `request-feedback` antes de dejarlo abierto.
+**If `slice.json` says nothing about a signature, ask.** An unverified webhook is
+a public endpoint that writes to the event store: anyone can invent domain facts.
+Invoke `request-feedback` before leaving it open.
 
 ---
 
-## Paso 5 — La ruta
+## Step 5 — The route
 
-En `router.ex`, **en un scope aparte** con su propio pipeline: el pipeline
-`:browser` trae `protect_from_forgery`, y un webhook no manda token CSRF.
+In `router.ex`, **in its own scope** with its own pipeline: the `:browser`
+pipeline brings `protect_from_forgery`, and a webhook sends no CSRF token.
 
 ```elixir
 pipeline :webhook do
   plug :accepts, ["json"]
-  plug MyAppWeb.Plugs.<Externo>WebhookSignature
+  plug MyAppWeb.Plugs.<External>WebhookSignature
 end
 
 scope "/webhooks", MyAppWeb do
   pipe_through :webhook
-  post "/<externo>", <Rodaja>WebhookController, :webhook
+  post "/<external>", <Slice>WebhookController, :webhook
 end
 ```
 
-Y el secreto sale de `config/runtime.exs`, nunca del código.
+And the secret comes from `config/runtime.exs`, never from code.
 
 ---
 
-## Paso 6 — Tests
+## Step 6 — Tests
 
-Dos, y ninguno hace red:
+Two, and neither touches the network:
 
-**`test/my_app/slices/<rodaja>/core_test.exs`** — las especificaciones del
-tablero sobre el `Core` puro, como en cualquier rodaja de escritura.
+**`test/my_app/slices/<slice>/core_test.exs`** — the board's specifications
+against the pure `Core`, as in any write slice.
 
-**`test/my_app_web/controllers/<rodaja>_webhook_controller_test.exs`** — con
-`ConnCase`, y fija lo que es propio del webhook:
+**`test/my_app_web/controllers/<slice>_webhook_controller_test.exs`** — with
+`ConnCase`, pinning down what's specific to a webhook:
 
-- Un cuerpo válido **con firma válida** escribe el evento y devuelve 200.
-- Un cuerpo válido **con firma inválida** devuelve **401** y **no escribe nada**.
-  Es el test que de verdad importa.
-- Un cuerpo que el dominio rechaza devuelve **200**, no 4xx, y no escribe.
-- **El mismo cuerpo dos veces escribe un solo evento.** Los proveedores
-  reintentan; si `Core` no es idempotente, cada reintento duplica el hecho.
+- A valid body **with a valid signature** writes the event and returns 200.
+- A valid body **with an invalid signature** returns **401** and **writes
+  nothing**. This is the test that actually matters.
+- A body the domain rejects returns **200**, not 4xx, and writes nothing.
+- **The same body twice writes one event.** Providers retry; if `Core` isn't
+  idempotent, every retry duplicates the fact.
 
 ---
 
-## Paso 7 — Quality gate
+## Step 7 — Quality gate
 
 ```
 mix precommit
-mix test test/my_app/slices/<rodaja>/ test/my_app_web/controllers/
+mix test test/my_app/slices/<slice>/ test/my_app_web/controllers/
 ```
 
 ---
 
-## Verificación final contra `slice.json`
+## Final check against `slice.json`
 
-- [ ] Los cuatro ficheros de escritura están, hechos con `/build-state-change`.
-- [ ] **No hay procesador.** Si has escrito un GenServer, esta rodaja no era un
+- [ ] The four write files exist, built with `/build-state-change`.
+- [ ] **There is no processor.** If you wrote a GenServer, this slice wasn't a
       webhook.
-- [ ] **Un solo evento de dominio**, no uno de «webhook recibido».
-- [ ] Los nombres de campo son de dominio, no del proveedor.
-- [ ] El cuerpo crudo va como atributo técnico y no se proyecta.
-- [ ] La firma se verifica **en un plug**, contra el cuerpo crudo, con
+- [ ] **One domain event**, not a "webhook received" one.
+- [ ] Field names are domain names, not the provider's.
+- [ ] The raw body is a technical attribute and isn't projected.
+- [ ] The signature is verified **in a plug**, against the raw body, with
       `secure_compare/2`.
-- [ ] El scope tiene pipeline propio, sin `protect_from_forgery`.
-- [ ] El secreto viene de `runtime.exs`.
-- [ ] Hay test de firma inválida → 401 y sin escritura.
-- [ ] Hay test de reintento → un solo evento.
+- [ ] The scope has its own pipeline, without `protect_from_forgery`.
+- [ ] The secret comes from `runtime.exs`.
+- [ ] There's a test for invalid signature → 401 and no write.
+- [ ] There's a test for a retry → one event.

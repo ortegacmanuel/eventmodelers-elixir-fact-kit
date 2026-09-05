@@ -1,5 +1,5 @@
 {
-  "label": "Elixir · Phoenix · FACT (event sourcing sin base de datos)",
+  "label": "Elixir \u00b7 Phoenix \u00b7 FACT (event sourcing, no database)",
   "kitSubdir": "build-kit",
   "useShared": true,
   "needsBoardId": true

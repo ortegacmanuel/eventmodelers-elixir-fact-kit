@@ -32,8 +32,8 @@ You work within **exactly ONE context at a time** — the one named in `.build-k
 10. The slice in the json is always true, the code follows what is defined in the json
 11. slice is only 'Done' if business logic is implemented as defined in the JSON, APIs are implemented, all scenarios in  JSON are implemented in code and it
     fulfills the slice.json. There must be no specification in json, that has no equivalent in code.
-12. Si la rodaja tiene `screens`, escribe el **encargo de pantalla** en `docs/pantallas/<rodaja>.md` con la plantilla de `.build-kit/CLAUDE.md`. Es el `ui-prompt.md` de este proyecto, y va versionado.
-13. Quality gate: `mix precommit`. Luego `mix test test/my_app/slices/<rodaja>/` — basta con los de la rodaja, no corras la suite entera cada vez.
+12. If the slice has `screens`, write the **screen brief** at `docs/screens/<slice>.md` using the template in `.build-kit/CLAUDE.md`. That's this stack's `ui-prompt.md`, and it is version controlled.
+13. Quality gate: `mix precommit`. Then `mix test test/my_app/slices/<slice>/` — the slice's own tests are enough; don't run the whole suite each time.
 14. even if the slice is fully implemented, run your test-analyzer skill and provide the code-slice.json file as defined in the skill
 15. If checks pass, commit ALL changes with message: `feat: [Slice Name]` and merge back to main as FF merge ( update
     first )
@@ -82,7 +82,7 @@ learnings:
 ## Codebase Patterns
 - Example: Use `sql<number>` template for aggregations
 - Example: Always use `IF NOT EXISTS` for migrations
-- Ejemplo: qué campos expone el modelo de lectura para la pantalla que queda pendiente
+- Example: which fields the read model exposes for the screen still pending
 ```
 
 Only add patterns that are **general and reusable**, not story-specific details.
@@ -119,8 +119,8 @@ Only update AGENTS.md if you have **genuinely reusable knowledge** that would he
 ## Quality Requirements
 
 - ALL commits must pass your project's quality checks (typecheck, lint, test)
-- `mix precommit` (compila con `--warnings-as-errors`, formatea y corre los tests)
-- `mix test test/my_app/slices/<rodaja>/`
+- `mix precommit` (compiles with `--warnings-as-errors`, formats, runs tests)
+- `mix test test/my_app/slices/<slice>/`
 - Do NOT commit broken code
 - Keep changes focused and minimal
 - Follow existing code patterns
@@ -164,17 +164,20 @@ Use all the key learnings from the progress.txt and update the `.build-kit/AGENT
 
 ---
 
-## Específico de este proyecto
+## Specific to this stack
 
-**Lee `.build-kit/CLAUDE.md` entero antes de la primera rodaja.** Lleva tres
-reglas que `slice.json` no dice y sin las cuales el código compila y está mal:
-de dónde salen las etiquetas, dónde se generan los identificadores e instantes,
-y por qué la validación no se parte entre `Core` y `Context`.
+**Read `.build-kit/CLAUDE.md` in full before your first slice.** It carries three
+rules `slice.json` doesn't state, and without them the code compiles and is
+wrong: where tags come from, where identifiers and timestamps are generated, and
+why validation isn't split between `Core` and `Context`.
 
-**Las pantallas no las construye este kit.** Si la rodaja tiene `screens`,
-construye el dominio, escribe el **encargo de pantalla** en
-`docs/pantallas/<rodaja>.md` —plantilla en `.build-kit/CLAUDE.md`— y **para**.
-No inventes una interfaz.
+**Step 0 is not optional.** The `slice.json` the loop writes is a stub of about
+230 bytes — six fields, no `fields`, no `events`, no `specifications`. Check it
+and refresh with `python3 .build-kit/refresh-slices.py` if it is one.
 
-**Quality gate:** `mix precommit`. Si falla, arréglalo antes de commitear —
-nunca commitees con `--warnings-as-errors` en rojo.
+**This kit does not build screens.** If the slice has `screens`, build the
+domain, write the **screen brief** at `docs/screens/<slice>.md` — template in
+`.build-kit/CLAUDE.md` — and **stop**. Don't invent an interface.
+
+**Quality gate:** `mix precommit`. Fix it before committing — never commit with
+`--warnings-as-errors` red.

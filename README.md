@@ -1,133 +1,136 @@
 # Build kit: Elixir · Phoenix · FACT
 
-Traduce rodajas de un tablero de [eventmodelers.ai](https://eventmodelers.ai) a
-código Elixir con **event sourcing sobre [`fact`](https://hex.pm/packages/fact)**
-— ficheros, sin base de datos — y arquitectura de rodajas verticales.
+Turns slices from an [eventmodelers.ai](https://eventmodelers.ai) board into
+Elixir code, using **event sourcing on [`fact`](https://hex.pm/packages/fact)**
+— files on disk, no database — and vertical slice architecture.
 
 ```
 npx @eventmodelers/cli init --stack elixir-fact \
-  --git https://github.com/<tu-usuario>/eventmodelers-elixir-fact-kit
+  --git https://github.com/ortegacmanuel/eventmodelers-elixir-fact-kit
 ```
 
-## Qué instala
+## What it installs
 
 | | |
 |---|---|
-| `.claude/skills/build-*` | las cuatro skills: state-change, state-view, automation, webhook |
-| `.build-kit/CLAUDE.md` | el blueprint — «cómo se construye aquí» |
-| `.build-kit/lib/*.md` | los prompts del bucle ralph |
-| `lib/my_app/` | el armazón: `decide`, `lectura`, `state_change`, `state_view`, `fact_event`, `id` |
+| `.claude/skills/build-*` | four skills: state-change, state-view, automation, webhook |
+| `.build-kit/CLAUDE.md` | the blueprint — "how we build things here" |
+| `.build-kit/lib/*.md` | the ralph loop prompts |
+| `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `fact_event`, `id` |
+| `docs/screens/` | a worked example of a screen brief |
 
-Las skills compartidas —`connect`, `learn-eventmodelers-api`,
-`update-slice-status`, `request-feedback`— las pone el propio CLI.
+The shared skills — `connect`, `learn-eventmodelers-api`, `update-slice-status`,
+`request-feedback` — come from the CLI itself.
 
-## Antes de instalar
+**327 lines of Elixir and about 1,400 lines of instructions.** The Elixir is what
+runs; the instructions are what makes an agent produce the same shape every time.
 
-**Este kit no crea la aplicación Phoenix, la equipa.** Crea el proyecto primero:
+## Phoenix + fact + what, exactly
 
-```
-mix phx.new mi_app --no-ecto
-```
+`fact` is an event store. It gives you two things: **append** and **read**, plus
+indices by type and by tag. It does *not* tell you how a command decides, what
+happens when two writes race, how a read model gets built, how a domain struct
+becomes storable, or where any of it lives.
 
-`--no-ecto` a propósito: el dominio no usa base de datos. Si necesitas Ecto para
-otra cosa (formularios vía `phoenix_ecto`, un espejo desechable de un sistema
-externo), añádelo después — pero **fuera del dominio**.
+Those 327 lines are that gap:
 
-## Después de instalar
+| module | what it solves |
+|---|---|
+| `decide.ex` | **the whole write path**: read → fold → decide → append. Optimistic concurrency (DCB), retry on conflict, and a wait until the write is visible to a subsequent read |
+| `reader.ex` | **the read path**: uses `fact`'s indices instead of scanning the ledger. Measured: 235 ms → 0.07 ms over 20,000 events |
+| `state_change.ex` | the contract for a write slice: `query`, `append_condition`, `initial_state`, `apply_event`, `execute` |
+| `state_view.ex` | the contract for a read slice: `query`, `initial_state`, `apply_event` |
+| `fact_event.ex` | protocol: domain struct → `fact` map (`type`, `data`, **`tags`**) |
+| `id.ex` | `uuid4` without pulling Ecto into the domain |
 
-Lee `INSTALAR-armazon.md`, que el propio kit deja en la raíz del proyecto: los
-cuatro pasos con el código listo para pegar. En resumen:
+**What you don't get, and that's half the point:** no database, no migrations,
+no Ecto schemas, no `Repo`, no projection tables. **Read models are folded on
+the fly** every time you ask. A read slice is two files and zero SQL.
 
-### Renombrar el namespace
+Without the framework each slice would call `Fact.append` and `Fact.read` its own
+way. With it there is *one* write path and *one* read path, so every slice looks
+the same — which is the precondition for an agent generating them unattended.
 
-El armazón viene con el namespace `MyApp`, porque el CLI copia ficheros y no
-sustituye plantillas. Renómbralo:
+## Before installing
+
+**This kit doesn't create the Phoenix app, it equips one.** Create it first:
 
 ```bash
-APP=mi_app; MOD=MiApp
-grep -rl 'MyApp\|my_app' lib .claude/skills .build-kit/CLAUDE.md \
-  | xargs sed -i "s/MyApp/$MOD/g; s/my_app/$APP/g"
-mv lib/my_app "lib/$APP"
+mix phx.new my_app --no-ecto
 ```
 
-Y añade a `mix.exs`:
+`--no-ecto` on purpose: the domain has no database. If you need Ecto for
+something else — forms via `phoenix_ecto`, a throwaway mirror of an external
+system — add it later, but **keep it out of the domain**.
 
-```elixir
-{:fact, "~> 0.2.0"},
-{:req, "~> 0.5"},
-# `lazy_html` con versión CLAVADA: la última puede no tener binario
-# precompilado para tu plataforma y cae a compilar lexbor con cmake.
-{:lazy_html, "0.1.11", only: :test},
-```
+## After installing
 
-```elixir
-defp aliases do
-  [
-    setup: ["deps.get", "fact.setup", "assets.setup", "assets.build"],
-    test: ["fact.setup", "test"],
-    "phx.server": ["fact.setup", "phx.server"],
-    "fact.setup": &fact_setup/1,
-    precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
-  ]
-end
-```
+Read `INSTALL.md`, which the kit drops in your project root: four steps with the
+code ready to paste. The namespace ships as `MyApp` because the CLI copies files
+without templating, so step one is a one-line `sed`.
 
-**`fact.setup` en los tres.** Sin el store creado, `Application.fact_db/0`
-lanza tras dos segundos y se lleva por delante lo que estuviera haciendo el
-usuario. Pasa la primera vez que alguien arranca `phx.server` y cuesta un rato
-diagnosticarlo.
+## The four slice shapes
 
-## Las cuatro formas de rodaja
-
-| `slice.json` dice | skill | ficheros |
+| `slice.json` has | skill | files |
 |---|---|---|
-| `commands` / `events` | `build-state-change` | comando, evento, `core`, `context` |
+| `commands` / `events` | `build-state-change` | command, event, `core`, `context` |
 | `readmodels` / `queries` | `build-state-view` | `core`, `context` |
-| `processors` no vacío | `build-automation` | los cuatro + `processor` |
-| evento externo entrante | `build-webhook` | los cuatro + controlador y plug |
+| non-empty `processors` | `build-automation` | those four + `processor` |
+| an inbound external event | `build-webhook` | those four + controller and plug |
 
-## Lo que este kit NO hace
+## What this kit does NOT do
 
-**Pantallas.** `slice.json` trae la pantalla como metadatos y prosa, **no como
-diseño** — el HTML del tablero no viaja en el payload. Cuando una rodaja tiene
-`screens`, el agente construye el dominio, escribe un **encargo de pantalla** en
-`docs/pantallas/<rodaja>.md` y para.
+**Screens.** `slice.json` carries a screen as metadata and prose — **not as a
+design**. The rendered HTML from the board never travels in the payload.
 
-Ese encargo es el `ui-prompt.md` que el bucle prevé y ningún kit rellena. Su
-sección más útil es **«Lo que el dominio NO da»**: es lo que impide que quien
-construya la vista se invente campos.
+When a slice has `screens`, the agent builds the domain, writes a **screen
+brief** at `docs/screens/<slice>.md`, and stops.
 
-## Las tres reglas que `slice.json` no dice
+That brief is the `ui-prompt.md` the loop anticipates in step 12 and that no
+shipped stack fills in. Its most useful section is **"What the domain does NOT
+give you"** — it's what stops whoever builds the view from inventing fields or
+asking the domain for things it shouldn't own. There's a worked example in
+`docs/screens/`.
 
-Están en `.build-kit/CLAUDE.md` y son la razón de ser de este kit. No se deducen
-leyendo otros build kits — salieron de construir una rodaja a mano y chocar con
-ellas:
+## Three rules `slice.json` doesn't tell you
 
-1. **Las etiquetas salen de `idAttribute: true`.** `slice.json` trae `tags: []`
-   en todos los elementos: no están vacías, están **sin derivar**. Y son las
-   claves de consulta de todo el sistema.
-2. **Los campos generados viajan en el comando.** Un `derived:instante del
-   append` parece decir que se genera al escribir; hacerlo en `Core` rompe la
-   pureza y deja la decisión imposible de probar sin reloj.
-3. **La validación no se parte** entre `Core` y `Context`. Los escenarios
-   `SPEC_ERROR` se prueban sobre el `Core` puro, que no pasa por `Context`.
+They live in `.build-kit/CLAUDE.md` and they are the reason this kit exists. You
+can't derive them by reading other build kits — they came from building a slice
+by hand and hitting them:
 
-## Trampas del bucle que conviene conocer
+1. **Tags come from `idAttribute: true`.** `slice.json` ships `tags: []` on every
+   element: they aren't empty, they're **underived**. And tags are the query keys
+   for the entire system — a made-up tag doesn't fail, it silently stops finding
+   events downstream.
+2. **Generated fields travel on the command.** A `derived:append instant` looks
+   like it's produced at write time; doing that inside `Core` breaks purity and
+   leaves the decision impossible to test without a clock.
+3. **Validation doesn't get split** between `Core` and `Context`. The board's
+   `SPEC_ERROR` scenarios are tested against the pure `Core`, which never goes
+   through `Context`.
 
-- **El `slice.json` que escribe el bucle es un stub.** `fetchAndPersistSlices`
-  usa el endpoint resumen: seis campos, ~230 bytes, sin `fields` ni `events` ni
-  `specifications`. El kit trae `.build-kit/refrescar-rodajas.py`, y el paso 0
-  del `CLAUDE.md` obliga a comprobarlo.
-- **Un bucle ocioso puede no enterarse** de una rodaja marcada `Planned` si el
-  evento de tiempo real no llega. Refrescar el índice local lo desbloquea.
-- **El nombre de carpeta canónico** conserva tildes y `·`: es `title` sin
-  espacios y en minúsculas. Normalizar a ASCII crea una carpeta paralela que el
-  bucle no mira.
+## Loop quirks worth knowing
 
-## Procedencia
+Not bugs in this kit — behaviour of the ralph loop that will bite you:
 
-Derivado de construir el capítulo 1 de [NAMU](https://namupartner.com) —
-trazabilidad EUDR para cacao y café venezolanos— rodaja a rodaja, y de los
-módulos base de `traduka-servo`, `conecta_zen` y `contextovnzla`.
+- **The `slice.json` the loop writes is a stub.** `fetchAndPersistSlices` uses
+  the *summary* endpoint: six fields, ~230 bytes, no `fields`, no `events`, no
+  `specifications`. The kit ships `.build-kit/refresh-slices.py`, and step 0 of
+  `CLAUDE.md` makes checking for it mandatory. This one is easy to miss because
+  the file exists and parses — it's just empty of everything that matters.
+- **An idle loop may not notice a slice you mark `Planned`** if the realtime
+  event doesn't arrive. Refreshing the local index unblocks it.
+- **The canonical folder name keeps accents and `·`**: it's `title` with spaces
+  removed, lowercased. Normalising to ASCII creates a parallel folder the loop
+  never looks at.
 
-Licencia: MIT.
+## Provenance
+
+Derived from building the first chapter of [NAMU](https://namupartner.com) — EUDR
+traceability for Venezuelan cocoa and coffee — slice by slice, and from the base
+modules of `traduka-servo`, `conecta_zen` and `contextovnzla`.
+
+The kit was validated by using it: five real defects surfaced from running it,
+none from reading it. All five are closed, in the blueprint or in the skills.
+
+MIT.
