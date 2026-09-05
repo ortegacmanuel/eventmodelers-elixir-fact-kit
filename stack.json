@@ -1,0 +1,6 @@
+{
+  "label": "Elixir · Phoenix · FACT (event sourcing sin base de datos)",
+  "kitSubdir": "build-kit",
+  "useShared": true,
+  "needsBoardId": true
+}

@@ -1,0 +1,3 @@
+# El event store de FACT y cualquier otro dato de ejecución. Nunca al control
+# de versiones: es estado del entorno, no del proyecto.
+/data/
