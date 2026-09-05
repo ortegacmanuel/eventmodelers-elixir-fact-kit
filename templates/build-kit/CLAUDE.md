@@ -146,8 +146,9 @@ Es el `ui-prompt.md` del paso 12 del bucle. En este proyecto se llama
 `.build-kit/`, que se regenera— y es el contrato entre el dominio y quien
 construya la vista.
 
-Los ejemplos de esta sección salen de una rodaja real llamada «Comprobar una
-parcela»; sustitúyelos por los tuyos.
+**Ejemplo hecho**: `docs/pantallas/EJEMPLO-comprobar-una-parcela.md`, que el kit
+deja en el proyecto. Es un encargo real de otro sistema, para que se vea el
+nivel de detalle que merece la pena. Bórralo cuando tengas los tuyos.
 
 No es un diseño ni una propuesta de interfaz. Es **qué hay disponible y qué no**,
 para que quien la construya no tenga que leerse la rodaja entera ni inventarse
