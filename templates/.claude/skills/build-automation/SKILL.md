@@ -85,6 +85,48 @@ In the second case there is **no `source` field**: it would be a category error,
 implying an external evaluator where there is none. And the provenance field is
 self-describing — `"Provita ANP 2023-07-29"`, not `"2023-07-29"`.
 
+#### If you compute against a file, the file is an interface
+
+A data file you read at runtime is as much an external system as an HTTP API —
+it has a shape you don't control, and it can drift from what your code expects.
+The difference is that HTTP gives you a status code and a file gives you
+`nil`.
+
+**Never hand-write the fixture for a reader of a deployed artefact.** Derive it
+from the artefact, and add a test that compares the two:
+
+```elixir
+test "the fixture's keys are the real file's keys" do
+  path = Application.get_env(:my_app, :layer, [])[:path]
+
+  if File.exists?(path) do
+    keys = path |> File.read!() |> Jason.decode!() |> ... |> MapSet.new()
+
+    assert MapSet.new(@keys_from_the_file) == keys,
+           "the deployed file changed vocabulary: #{inspect(MapSet.to_list(keys))}"
+  else
+    # A large artefact often lives outside the repo. Absent is not a failure.
+    assert true
+  end
+end
+```
+
+The failure this prevents is worth spelling out, because it is quiet and it
+passes review. A hand-written fixture asserts the reader against *itself*: both
+sides of the test share the author's belief about the file's shape, so the test
+proves the reader is self-consistent and proves nothing about the file. If the
+belief is wrong, every test is green and every field comes back `""`.
+
+Then watch where those empty fields go. If the write command validates required
+fields — and it should — the command rejects, the item stays in the queue, and
+**the automation silently never produces a result**. Worse, it usually splits:
+the empty path (nothing found, no fields to fill) keeps working while the
+populated path (something found) hangs. The half that works is the half nobody
+was worried about.
+
+And write the guard so it **skips** when the artefact is absent rather than
+failing. A clean clone that doesn't ship a 30 MB layer is not a broken build.
+
 ### Translation happens inline
 
 The board may show four or six slices for one external call (request → external
@@ -182,6 +224,50 @@ Non-negotiable rules:
 - **Secrets come from `config/runtime.exs`**, never from code. If the key is
   missing, the processor should start and log the failure — not take down the
   whole application's boot.
+- **Decide how many calls may be in flight, and write the number down.** See
+  below. There is no safe default here: "as many as the queue holds" is a
+  decision, and it is usually the wrong one.
+
+### How many at a time
+
+A processor that sweeps its queue on boot will fire **every pending item at
+once**. That is the moment the limit of the external system shows up, and it
+shows up in production, on a restart, when the queue happens to be deep.
+
+Assume the service has a concurrency or rate limit **and that it is not
+documented**. Most aren't. You find them by hitting them: a burst comes back
+`429`, and the same call made alone succeeds — which is exactly the shape that
+makes it look like the service is broken rather than that you are being rude.
+
+So pick a ceiling and make it a module attribute with a comment saying where the
+number came from (measured? documented? guessed?):
+
+```elixir
+# One at a time: a burst of four returned 429 while a single call succeeded.
+@in_flight 1
+```
+
+Then keep the rule in a **pure function**, so it can be tested without the
+network:
+
+```elixir
+def room_for?(in_flight, item_id) do
+  map_size(in_flight) < @in_flight and item_id not in Map.values(in_flight)
+end
+```
+
+Two things follow, and both matter more than the ceiling itself:
+
+- **Don't build a second queue in memory.** You already have a durable one — the
+  TODO read model. An item you decline to launch stays pending there, so a
+  restart loses nothing and doesn't replay the burst. An in-memory backlog gives
+  up both properties.
+- **On success, pull the next item immediately; on failure, don't.** Waiting for
+  the next poll after every success leaves the queue idle most of the time. But
+  chaining after a *failure* turns a rejected call into a tight loop against
+  someone else's API — let the poll interval be the backoff. This means
+  `process/1` has to return something that distinguishes the two; `:ok` for both
+  is a bug you won't see until you're the one being rate-limited.
 
 ### The external system failing is a domain case
 
@@ -204,6 +290,18 @@ slice's `Core`, via `/build-state-change`, plus:
 - The mapping from external response to domain fields, as a pure function. Pull
   it out into its own function (`defp to_domain(response)`) precisely so it can
   be tested without the network.
+- **The decision of when to launch** — `room_for?/2` from Step 3. This is the one
+  people skip, because it is neither the mapping nor the write, so it falls
+  through the gap between them and ends up as the only untested logic in the
+  slice. It is also the logic that fails in production rather than in the suite.
+  Four assertions cover it: nothing in flight launches; something in flight
+  doesn't; the same item already in flight doesn't; releasing one makes room
+  again.
+
+"Not tested with the network" means the *call* isn't tested. It does not mean
+the processor is exempt. If a rule inside the `GenServer` can't be reached
+without the network, that's a sign it should be a pure function, not a sign it
+shouldn't be tested.
 
 With `start?: false` in `config/test.exs` for this slice.
 
@@ -231,3 +329,12 @@ mix test test/my_app/slices/<slice>/
 - [ ] The processor is in the supervision tree and switched off in tests.
 - [ ] Secrets come from `runtime.exs`.
 - [ ] The response → domain mapping is a pure function and has a test.
+- [ ] If the slice reads a deployed file: the fixture is derived from it, and a
+      guard test compares their vocabulary (skipping when the file is absent).
+- [ ] The in-flight ceiling is a module attribute, with a comment saying where
+      the number came from.
+- [ ] The launch decision is a pure function and has a test.
+- [ ] Declining to launch leaves the item in the durable queue — there is no
+      second queue in memory.
+- [ ] `process/1` distinguishes success from failure, and only success chains
+      into the next item.

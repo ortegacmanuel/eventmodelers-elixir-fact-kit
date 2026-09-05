@@ -311,6 +311,12 @@ Rules:
 - A `SPEC_ERROR` scenario is `assert {:error, :reason} = Core.execute(...)`.
 - **Never compare `Map.keys/1` against a list** — the order isn't guaranteed and
   the assertion fails intermittently. Use `MapSet`.
+- **A fixture must never invent the shape of its own input.** Board examples are
+  the input here, so following the rule above already satisfies this. But the
+  moment a test feeds something that exists outside the repo — a data file, an
+  API response, a deployed artefact — the fixture has to be derived from it and
+  guarded against drift, or the test only proves the code agrees with itself.
+  `/build-automation`, step 2, has the guard.
 
 ### If a test fails, suspect the test
 
