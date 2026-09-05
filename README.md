@@ -33,7 +33,12 @@ mix phx.new mi_app --no-ecto
 otra cosa (formularios vía `phoenix_ecto`, un espejo desechable de un sistema
 externo), añádelo después — pero **fuera del dominio**.
 
-## Después de instalar: renombrar el namespace
+## Después de instalar
+
+Lee `INSTALAR-armazon.md`, que el propio kit deja en la raíz del proyecto: los
+cuatro pasos con el código listo para pegar. En resumen:
+
+### Renombrar el namespace
 
 El armazón viene con el namespace `MyApp`, porque el CLI copia ficheros y no
 sustituye plantillas. Renómbralo:
