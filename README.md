@@ -1,4 +1,4 @@
-# Build kit: Elixir · Phoenix · FACT
+# Build kit: Elixir · FACT (event sourcing, no database)
 
 Turns slices from an [eventmodelers.ai](https://eventmodelers.ai) board into
 Elixir code, using **event sourcing on [`fact`](https://hex.pm/packages/fact)**
@@ -16,6 +16,7 @@ npx @eventmodelers/cli init --stack elixir-fact \
 | `.claude/skills/build-*` | four skills: state-change, state-view, automation, webhook |
 | `.build-kit/CLAUDE.md` | the blueprint — "how we build things here" |
 | `.build-kit/lib/*.md` | the ralph loop prompts |
+| project root | a real starter: `mix.exs`, `config/`, supervision tree, framework — compiles as installed |
 | `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `fact_event`, `id` |
 | `docs/screens/` | a worked example of a screen brief |
 
@@ -53,11 +54,20 @@ the same — which is the precondition for an agent generating them unattended.
 
 ## Before installing
 
-**This kit doesn't create the Phoenix app, it equips one.** Create it first:
+**Nothing.** Install into an empty directory and you get a project that
+compiles and whose `mix precommit` passes — `mix.exs`, `config/`, the
+supervision tree and the framework, all wired.
 
-```bash
-mix phx.new my_app --no-ecto
-```
+Phoenix is not required and not installed. The framework is pure domain — it
+depends on `Logger` and `fact` and nothing else — and this kit does not build
+screens. Add Phoenix later if you want a UI.
+
+**Already have a project?** Decline the root files and merge three things
+instead; `INSTALL.md` lists them.
+
+**Keep the path short.** FACT takes its lock through a Unix domain socket, and
+those cap at ~104 characters. A deep project path fails at boot with a
+`Fact.Database … :einval` that says nothing about the real cause.
 
 `--no-ecto` on purpose: the domain has no database. If you need Ecto for
 something else — forms via `phoenix_ecto`, a throwaway mirror of an external
@@ -65,9 +75,13 @@ system — add it later, but **keep it out of the domain**.
 
 ## After installing
 
-Read `INSTALL.md`, which the kit drops in your project root: four steps with the
-code ready to paste. The namespace ships as `MyApp` because the CLI copies files
-without templating, so step one is a one-line `sed`.
+One step: rename the namespace. It ships as `MyApp` / `my_app` because the CLI
+copies files without templating, so it's a one-line `sed` — `INSTALL.md`, which
+the kit drops in your project root, has it ready.
+
+```bash
+mix setup && mix precommit
+```
 
 ## The four slice shapes
 
