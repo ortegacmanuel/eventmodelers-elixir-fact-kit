@@ -99,8 +99,28 @@ This is the expensive failure of this slice shape. If the read model folds three
 event types, `query/1` has to name all three. A missing one breaks nothing — it
 leaves a field `nil` forever.
 
-Derive the list from the fields' `mapping:` values: every `<Event>.<field>` names
-a type that must appear in `query/1`.
+Derive the list from the fields' `mapping:` values — **and read the prose ones
+too**.
+
+Two shapes appear there, and only the first is structured:
+
+```
+mapping: "ComprobacionSolicitada.geometria"                    ← <Event>.<field>
+mapping: "derived:presencia de DeforestacionEvaluadaConWhisp"  ← event name in a sentence
+```
+
+The second is the one that gets missed. A `derived:` mapping whose derivation is
+*the presence of an event* still needs that event in `query/1`, and the type name
+is buried in a human-written phrase rather than in a field of its own.
+
+So don't pattern-match on `<Event>.<field>`. **Scan every `mapping` value — both
+shapes — for any event name that exists in this context**, and put every one you
+find in `query/1`. The context's event names are a known, closed list, so this is
+a lookup, not a guess.
+
+And don't lean on `events[]` for a state-view slice: on a read slice it is
+routinely **empty**, because the events belong to the write slices that emit
+them. `mapping` is the only place they appear.
 
 ### The tag scopes the view
 

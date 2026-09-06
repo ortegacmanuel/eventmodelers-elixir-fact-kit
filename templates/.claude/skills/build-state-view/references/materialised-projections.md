@@ -22,6 +22,31 @@ stay narrow — one plot, one check, one order. It stops being nothing when:
 **Measure before concluding.** A fold over a few hundred events is microseconds.
 The point at which this matters is further away than it feels.
 
+## Why we can't do what the other kits do
+
+Worth knowing before you copy anyone: **node, supabase and skilj project
+*inline*, in the same database transaction as the event append.** Emmett pins
+the projection write to the same client already holding the event's
+transaction; skilj exposes it as `sync() -> bool` per projection. That
+eliminates the entire class of problems below — no checkpoint, no drift, no
+missed events, no rebuild path — because the projection cannot disagree with
+the events, it is written atomically with them.
+
+**That option isn't on the table here.** FACT writes files and a mirror is a
+separate database; there is no transaction spanning both. Writing the
+projection inside `Decide.execute/4` right after the append would look inline
+and isn't: a crash between the two leaves an event with no row and nobody the
+wiser.
+
+So the asynchronous pattern below isn't a preference, it's the only correct
+shape available — and it's why the four rules exist. They're each closing a
+hole the other kits' stores close for them.
+
+One thing worth stealing anyway, from skilj: **a schema change never replays
+automatically.** It stages and waits for an explicit rebuild, "never triggered
+automatically by a deploy" — so nobody meets a three-hour startup after
+shipping.
+
 ## The shape, when you do need it
 
 The pattern is a **mirror**: a disposable SQL store beside the event store,
