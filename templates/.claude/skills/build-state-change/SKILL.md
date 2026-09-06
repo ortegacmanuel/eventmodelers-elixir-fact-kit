@@ -285,6 +285,38 @@ layer above needs to subscribe to the result and to show the reference.
 
 ---
 
+### The one seam the view is allowed to reach through
+
+`context.ex` is the slice's public surface, and a LiveView or controller should
+go through it. There is exactly one exception worth allowing, and it needs
+stating because otherwise it gets copied without its conditions:
+
+> A view may call a **pure predicate on `Core`** to answer "would this command
+> be accepted?" without sending it.
+
+The case that earns it: a form or a map that has to enable or disable its submit
+button as the user types. Going through `Context` means a round trip and a
+written event for something the user hasn't committed to yet. Calling
+`Core.valid_<thing>?/1` costs nothing and stays honest, because `Core` is pure —
+no store, no clock, no identifiers.
+
+**Three conditions, all of them:**
+
+- The function is **pure** — the same purity `Core` has everywhere else. The
+  moment a `Core` function touches the store or the clock, this stops being
+  safe and the view has to go through `Context`.
+- It **answers, it doesn't act.** A predicate or a `:ok | {:error, reason}`. If
+  the view wants something to happen, that's `Context`.
+- The **same check still runs inside `execute/2`.** This is a convenience for
+  the interface, never the enforcement. Validation that only lives in the view
+  is validation an API call walks straight past.
+
+Everything else — writing, reading a projection, generating an id or an
+instant — goes through `Context`. And the direction never reverses: nothing
+under `lib/<app>/` may name a module from `lib/<app>_web/`. The one legitimate
+exception is `application.ex`, which starts the Endpoint because it is the
+composition root and knows about everything it supervises.
+
 ## Step 7 — `core_test.exs`
 
 **File:** `test/my_app/slices/<slice>/core_test.exs`
