@@ -1,10 +1,7 @@
 defmodule MyApp.Application do
-  @moduledoc """
-  The supervision tree, and the one lookup every slice needs.
-
-  Installing into an existing project? Don't take this file — merge the two
-  `children` entries and `fact_db/0` into the `Application` you already have.
-  """
+  # See https://elixir.hexdocs.pm/Application.html
+  # for more information on OTP Applications
+  @moduledoc false
 
   use Application
 
@@ -13,14 +10,25 @@ defmodule MyApp.Application do
     fact_path = Application.get_env(:my_app, :fact_path, "data/fact_db")
 
     children = [
-      # The event store: files, no database.
+      MyAppWeb.Telemetry,
+      {DNSCluster, query: Application.get_env(:my_app, :dns_cluster_query) || :ignore},
+      {Phoenix.PubSub, name: MyApp.PubSub},
+      # Start a worker by calling: MyApp.Worker.start_link(arg)
+      # {MyApp.Worker, arg},
+      # Start to serve requests, typically the last entry
+      # The event store: files, no database. Before the Endpoint, so nothing can
+      # serve a request against a store that isn't up.
       {Fact.Supervisor, databases: [fact_path]},
       # For slice work that must not block the caller — an automation slice's
       # external calls run as tasks under here.
-      {Task.Supervisor, name: MyApp.TaskSupervisor}
+      {Task.Supervisor, name: MyApp.TaskSupervisor},
+      MyAppWeb.Endpoint
     ]
 
-    Supervisor.start_link(children, strategy: :one_for_one, name: MyApp.Supervisor)
+    # See https://elixir.hexdocs.pm/Supervisor.html
+    # for other strategies and supported options
+    opts = [strategy: :one_for_one, name: MyApp.Supervisor]
+    Supervisor.start_link(children, opts)
   end
 
   @doc """
@@ -29,8 +37,8 @@ defmodule MyApp.Application do
   It also waits for the `Fact.EventLedger` to be alive, not just for the id to
   appear. FACT boots in two steps: first the context is registered — and there
   is already an id — then the ledger starts and takes the file lock. Returning
-  the id in between looks like it works and blows up on the first
-  `Fact.append` with a "no process".
+  the id in between looks like it works and blows up on the first `Fact.append`
+  with a "no process".
   """
   @attempts 100
   @wait_ms 20
@@ -61,5 +69,13 @@ defmodule MyApp.Application do
       nil -> false
       _pid -> match?([{_pid, _}], Registry.lookup(registry, Fact.EventLedger))
     end
+  end
+
+  # Tell Phoenix to update the endpoint configuration
+  # whenever the application is updated.
+  @impl true
+  def config_change(changed, _new, removed) do
+    MyAppWeb.Endpoint.config_change(changed, removed)
+    :ok
   end
 end

@@ -1,4 +1,4 @@
-# Build kit: Elixir · FACT (event sourcing, no database)
+# Build kit: Elixir · Phoenix · FACT
 
 Turns slices from an [eventmodelers.ai](https://eventmodelers.ai) board into
 Elixir code, using **event sourcing on [`fact`](https://hex.pm/packages/fact)**
@@ -16,7 +16,7 @@ npx @eventmodelers/cli init --stack elixir-fact \
 | `.claude/skills/build-*` | four skills: state-change, state-view, automation, webhook |
 | `.build-kit/CLAUDE.md` | the blueprint — "how we build things here" |
 | `.build-kit/lib/*.md` | the ralph loop prompts |
-| project root | a real starter: `mix.exs`, `config/`, supervision tree, framework — compiles as installed |
+| project root | a real Phoenix app: endpoint, router, layouts, assets, supervision tree — compiles and its tests pass as installed |
 | `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `fact_event`, `id` |
 | `docs/screens/` | a worked example of a screen brief |
 
@@ -54,16 +54,19 @@ the same — which is the precondition for an agent generating them unattended.
 
 ## Before installing
 
-**Nothing.** Install into an empty directory and you get a project that
-compiles and whose `mix precommit` passes — `mix.exs`, `config/`, the
-supervision tree and the framework, all wired.
+**Nothing.** Install into an empty directory and you get a Phoenix project that
+compiles and whose `mix precommit` passes: endpoint, router, layouts, assets
+with esbuild and Tailwind, and the FACT framework already in the supervision
+tree. One `sed` to rename the namespace and you're building slices.
 
-Phoenix is not required and not installed. The framework is pure domain — it
-depends on `Logger` and `fact` and nothing else — and this kit does not build
-screens. Add Phoenix later if you want a UI.
-
-**Already have a project?** Decline the root files and merge three things
+**Already have a project?** Decline the root files and merge four things
 instead; `INSTALL.md` lists them.
+
+**On OTP 27, assets need a hand.** GitHub's release CDN serves a certificate OTP
+rejects with `key_usage_mismatch`, so `mix tailwind.install` fails —
+`./scripts/ensure-asset-binaries.sh` pulls the same binaries with `curl`. It
+surfaces as a runtime error on the first page load, with the server already up,
+so it doesn't read like a build problem.
 
 **Keep the path short.** FACT takes its lock through a Unix domain socket, and
 those cap at ~104 characters. A deep project path fails at boot with a
