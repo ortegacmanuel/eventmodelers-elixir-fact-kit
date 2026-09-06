@@ -136,6 +136,17 @@ read model field is the `idAttribute`.
 which has no session or any other identity to filter by. The query goes by types
 alone, and that's correct — say so in the `@moduledoc` so nobody "fixes" it.
 
+> **And you can check which one this is.** Nothing in a read slice's own
+> `slice.json` distinguishes a queue from a scoped view — same `sliceType`, same
+> single `idAttribute`, same shape of specification. The signal lives in the
+> *automation* slices of the same context: a processor declares the queue it
+> consumes as a dependency with `"type": "INBOUND"` and
+> `"elementType": "READMODEL"`, naming this read model. They're all on disk
+> under `.build-kit/.slices/{Context}/`, so this is a lookup, not a guess.
+>
+> Don't lean on `listElement: true` — it's set on ordinary scoped list views
+> too. And `todoList` on the processor is `false` even for real queues.
+
 ### Derived means computed here, not stored
 
 A field with `mapping: "derived:presence of <Event>"` is

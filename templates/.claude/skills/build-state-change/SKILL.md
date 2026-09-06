@@ -135,6 +135,17 @@ underived.**
 > Every event field with `idAttribute: true` produces a tag
 > `<name without the Id suffix, in snake_case>:<value>`.
 
+**The event carries all of them; a query picks one.** An event says everything
+it is about — `ComprobacionSolicitada` writes both `comprobacion:` and
+`sesion:` — while a query names the single tag that scopes it: the write side
+picks the one that is its consistency boundary, and each read model picks the
+one its view is about. That's how two views fold the same events and answer
+different questions.
+
+The consequence worth remembering: **a query can only scope by a tag its events
+actually carry.** Scope by one nothing writes and the query finds nothing, in
+silence.
+
 `checkId` → `"check:#{e.check_id}"`. `sessionId` → `"session:#{e.session_id}"`.
 
 **This matters more than anything else in this skill.** Tags are the query keys
