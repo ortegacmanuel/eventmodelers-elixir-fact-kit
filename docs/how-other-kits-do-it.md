@@ -145,14 +145,25 @@ The others either ignore the UI or generate it; we produce a document that says
 what the read model gives and — the part that earns its keep — **what it does
 not**, so whoever builds the view can't invent fields.
 
-## Where ours is weaker
+## Applied, 06·09·2026
 
-**Fold-on-read has a ceiling**, and no escape hatch inside the kit.
+All three, plus a fourth the research surfaced:
 
-**No `references/` layer**, so the skills carry everything and grow long.
+- Board comments now in **all four** skills, not one.
+- A `references/` layer: `finding-tags.md` under build-state-change,
+  `materialised-projections.md` under build-state-view.
+- The tag *reasoning* — the question to put to a modeller when the mechanical
+  rule runs out, and the two-tag case a single aggregate id can't express.
+- **The escape hatch that was genuinely missing.** Fold-on-read having a
+  ceiling with nowhere to go was the sharpest finding here, and the answer
+  already existed in `contextovnzla`: a disposable SQLite mirror with the
+  checkpoint stored in the same database as the projection, so deleting it
+  replays from zero on the next boot — rebuild and start are one path. Written
+  up with the four rules that each close a specific hole, and with the line
+  that separates a projection from domain.
 
-**Comment handling is in one skill of four.**
+## Where ours is still weaker
 
-**And we ship the largest scaffold** — 49 files against 13–31 — because Phoenix
+**We ship the largest scaffold** — 49 files against 13–31 — because Phoenix
 brings an asset pipeline. Same order as cratis, but the maintenance is real:
 `mix phx.new`'s output ages with every Phoenix release.

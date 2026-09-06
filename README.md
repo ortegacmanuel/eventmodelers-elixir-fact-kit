@@ -14,6 +14,7 @@ npx @eventmodelers/cli init --stack elixir-fact \
 | | |
 |---|---|
 | `.claude/skills/build-*` | four skills: state-change, state-view, automation, webhook |
+| `.claude/skills/build-*/references/` | the deep material: finding tags, materialised projections |
 | `.build-kit/CLAUDE.md` | the blueprint — "how we build things here" |
 | `.build-kit/lib/*.md` | the ralph loop prompts |
 | project root | a real Phoenix app: endpoint, router, layouts, assets, supervision tree — compiles and its tests pass as installed |

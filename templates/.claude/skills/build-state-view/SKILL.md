@@ -10,6 +10,19 @@ description: Implements a read slice (a read model folded from events, no tables
 > truth** for every field and every piece of metadata. Never invent fields that
 > aren't there.
 
+> **A read model here is a fold, not a table.** No projection, no migration, no
+> rebuild path — the read model *is* the events. That's the default and it's
+> what to build. If the slice genuinely can't be served that way, read
+> `references/materialised-projections.md` before inventing anything: it has the
+> conditions, the mirror pattern, and the line that separates a projection from
+> domain.
+
+> **Comments**: every element carries `comments: string[]`. Use them as hints.
+> If a comment raises an **open decision** rather than a hint — "rate limiting
+> still undecided", "own stream or the main registry?" — don't decide it
+> yourself: invoke `request-feedback`. Resolve the ones you consume:
+> `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
+
 > And read `.build-kit/CLAUDE.md`, especially the tag rule: this is where it pays
 > off or breaks.
 

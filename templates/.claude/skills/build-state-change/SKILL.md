@@ -144,6 +144,11 @@ them. A made-up tag doesn't fail — it silently stops finding events downstream
 If an event has no `idAttribute: true` at all, **stop and invoke
 `request-feedback`**: an event with no tags can't be queried.
 
+> **When the rule runs out**, read `references/finding-tags.md`. It carries the
+> question to put to the modeller, and the case a single id can't express — a
+> decision that needs two histories at once, which DCB handles in one append
+> where aggregate modelling would need a saga.
+
 ### The event type
 
 `type:` is the event's `title` **verbatim**, PascalCase, no spaces. It's the

@@ -9,6 +9,12 @@ description: Implements an automation slice (a processor that watches a TODO que
 > `.build-kit/.slices/{Context}/{slice}/slice.json`. That file is the **source of
 > truth**. Never invent fields that aren't there.
 
+> **Comments**: every element carries `comments: string[]`. Use them as hints.
+> If a comment raises an **open decision** rather than a hint — "rate limiting
+> still undecided", "own stream or the main registry?" — don't decide it
+> yourself: invoke `request-feedback`. Resolve the ones you consume:
+> `POST <BASE_URL>/api/org/<ORG_ID>/boards/<BOARD_ID>/nodes/<nodeId>/comments/<commentId>/resolve`.
+
 > And read `.build-kit/CLAUDE.md`. This slice shape deviates most from what the
 > board appears to say, so those three rules matter double here.
 
