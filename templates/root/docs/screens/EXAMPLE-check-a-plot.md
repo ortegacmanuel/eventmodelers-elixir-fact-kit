@@ -2,6 +2,10 @@
 
 Slice `Check a plot` · node `dfa96352-…`.
 
+Mockup: designed on the board — `get_node` with the id above. The rendered
+pages live on the node, not in `slice.json`. Look at it before laying anything
+out.
+
 > **An example, not an empty template.** This is a real brief from another
 > system — an EUDR traceability tool for Venezuelan cocoa and coffee — so you
 > can see how much detail is worth writing. Delete it once you have your own.

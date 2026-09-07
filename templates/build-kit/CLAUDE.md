@@ -162,12 +162,30 @@ detail is worth writing. Delete it once you have your own.
 
 It is not a design or a proposal. It's **what's available and what isn't**, so
 whoever builds the view doesn't have to read the whole slice or make things up.
+
+> **Link the mockup, if the board has one.** A screen is often designed on the
+> board before it's built — the modeling kit's `html-screen` skill renders real
+> HTML and CSS onto an `HTML_SCREEN` node. That markup does **not** travel in
+> `slice.json`: `screens[]` carries only `title`, `description` and `fields`,
+> and `screenImages` is usually empty. The pages live on the node, behind
+> `mcp__eventmodelers__get_node` with the screen's id.
+>
+> So put the node id in the brief and say the mockup is there. Otherwise the
+> design and the build never meet: whoever builds the view has the contract and
+> not the picture, and reinvents a layout somebody already decided.
+>
+> Say plainly whether one exists. "No mockup on the board" is useful; silence
+> reads as "there isn't one" and is wrong half the time.
+
 Template:
 
 ```markdown
 # Screen: <the screen's title on the board>
 
 Slice `<title>` · node `<screen node id>` · written by the loop on <date>.
+
+<Mockup: "designed on the board — `get_node` with the id above", or
+"no mockup on the board".>
 
 ## How it's entered
 
