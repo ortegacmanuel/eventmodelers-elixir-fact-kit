@@ -60,8 +60,15 @@ compiles and whose `mix precommit` passes: endpoint, router, layouts, assets
 with esbuild and Tailwind, and the FACT framework already in the supervision
 tree. One `sed` to rename the namespace and you're building slices.
 
-**Already have a project?** Decline the root files and merge four things
-instead; `INSTALL.md` lists them.
+**Already have a project? Don't run `init`.** It copies `templates/root/` over
+your files before it prompts about anything — the one question it asks is about
+`.build-kit/`, by which point `mix.exs` and `config/` are already gone. Install
+into an empty directory and copy across the four things `INSTALL.md` lists.
+
+**And `--hooks` now installs something.** `.githooks/pre-commit` runs the slice
+commit-scope guard: a commit that touches two slices, or that changes the
+framework while building a slice, is refused. `--no-verify` gets past it, on
+purpose.
 
 **On OTP 27, assets need a hand.** GitHub's release CDN serves a certificate OTP
 rejects with `key_usage_mismatch`, so `mix tailwind.install` fails —

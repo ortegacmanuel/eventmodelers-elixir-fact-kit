@@ -44,7 +44,15 @@ Green? Delete this file and start marking slices `Planned` on the board.
 
 ---
 
-## 2 · If you already have a project
+## 2 · If you already have a project — **don't run `init`**
+
+`init` copies `templates/root/` over your project **before** it asks anything.
+The only prompt is about `.build-kit/`, and by then `mix.exs`, `config/`,
+`AGENTS.md`, `README.md` and the assets have already been overwritten. Asking
+you to "decline the root files" is advice that arrives too late.
+
+So: install into an empty directory, and copy across what you want. What
+follows is what you want.
 
 Don't take the root files — they'd overwrite yours. Decline them, or install
 into an empty directory and copy across only what you need:

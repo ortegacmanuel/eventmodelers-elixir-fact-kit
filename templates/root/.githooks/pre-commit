@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+#
+# Slice commit-scope guard. Installed by `init --stack … --hooks`, which also
+# runs `git config core.hooksPath .githooks`.
+#
+# `git commit --no-verify` skips it. That's deliberate: a guard you can't get
+# past gets removed, and the point is to make crossing a boundary a decision
+# rather than an accident.
+set -euo pipefail
+
+if command -v node >/dev/null 2>&1 && [ -f .build-kit/lib/check-commit-scope.cjs ]; then
+  node .build-kit/lib/check-commit-scope.cjs
+fi
