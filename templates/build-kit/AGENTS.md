@@ -29,8 +29,8 @@ system on this framework. These aren't hypotheses — each one cost a round trip
   the fields with `idAttribute: true`. It's the most important rule in the kit.
 - **The `slice.json` the loop writes is a stub.** `fetchAndPersistSlices` uses
   the **summary** endpoint: six fields, ~230 bytes, no `fields`, no `events`, no
-  `specifications`. Refresh with `python3 .build-kit/refresh-slices.py` — it's
-  step 0 in `CLAUDE.md`.
+  `specifications`, and **no board comments**. Refresh with
+  `npx @eventmodelers/cli fetch --context <ctx>` — it's step 0 in `CLAUDE.md`.
   This happened for real, and the first time it worked **by luck**: for slices
   with ASCII titles the stub **overwrote** the full definition, and only the ones
   with accents or `·` survived, because they landed in a different folder.

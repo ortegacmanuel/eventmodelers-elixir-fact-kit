@@ -173,7 +173,9 @@ why validation isn't split between `Core` and `Context`.
 
 **Step 0 is not optional.** The `slice.json` the loop writes is a stub of about
 230 bytes — six fields, no `fields`, no `events`, no `specifications`. Check it
-and refresh with `python3 .build-kit/refresh-slices.py` if it is one.
+and refresh with `npx @eventmodelers/cli fetch --context <context>` if it is
+one. That also brings the board comments, which the skills use and the stub
+omits.
 
 **This kit does not build screens.** If the slice has `screens`, build the
 domain, write the **screen brief** at `docs/screens/<slice>.md` — template in

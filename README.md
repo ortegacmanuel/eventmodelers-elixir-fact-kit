@@ -133,9 +133,11 @@ Not bugs in this kit — behaviour of the ralph loop that will bite you:
 
 - **The `slice.json` the loop writes is a stub.** `fetchAndPersistSlices` uses
   the *summary* endpoint: six fields, ~230 bytes, no `fields`, no `events`, no
-  `specifications`. The kit ships `.build-kit/refresh-slices.py`, and step 0 of
-  `CLAUDE.md` makes checking for it mandatory. This one is easy to miss because
-  the file exists and parses — it's just empty of everything that matters.
+  `specifications`. Step 0 of `CLAUDE.md` makes checking for it mandatory, and
+  the fix is the CLI's own `fetch --context <ctx>`, which writes the full
+  definition to the same place. Easy to miss, because the file exists and
+  parses — it's just empty of everything that matters. And the stub also has no
+  board comments, which all four skills read as hints.
 - **An idle loop may not notice a slice you mark `Planned`** if the realtime
   event doesn't arrive. Refreshing the local index unblocks it.
 - **The canonical folder name keeps accents and `·`**: it's `title` with spaces

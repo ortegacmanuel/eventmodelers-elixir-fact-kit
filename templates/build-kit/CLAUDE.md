@@ -58,9 +58,17 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
    and you cannot build from it. It's easy to miss: the file exists and parses,
    it's just empty of everything that matters.
 
-   If it is one, refresh: `python3 .build-kit/refresh-slices.py`. It uses
-   `/slicedata?contextName=` — the full definition — and names folders with the
-   same rule as the loop, so it leaves no duplicates.
+   If it is one, refresh with the CLI:
+
+   ```
+   npx @eventmodelers/cli fetch --context <context>
+   ```
+
+   It writes the full definition into the same `.build-kit/.slices/` the loop
+   uses, with the same folder naming, so it leaves no duplicates. It also brings
+   two things the stub hasn't got and the skills need: **the board comments on
+   every element**, which they read as hints and resolve afterwards, and a
+   `config.json` with the whole context.
 
 1. Read `.build-kit/.slices/<context>/<slice>/slice.json`.
 2. Work out the shape and call the skill:
