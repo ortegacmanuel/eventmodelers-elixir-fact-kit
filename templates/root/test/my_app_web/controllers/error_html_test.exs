@@ -1,6 +1,10 @@
 defmodule MyAppWeb.ErrorHTMLTest do
   use MyAppWeb.ConnCase, async: true
 
+  # Phoenix's scaffold test. Screens and controllers get no tests in this kit,
+  # so it stays out of the default suite.
+  @moduletag :extra
+
   # Bring render_to_string/4 for testing custom views
   import Phoenix.Template, only: [render_to_string: 4]
 

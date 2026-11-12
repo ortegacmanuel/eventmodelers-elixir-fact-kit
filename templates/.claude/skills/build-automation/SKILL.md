@@ -311,6 +311,9 @@ shouldn't be tested.
 
 With `start?: false` in `config/test.exs` for this slice.
 
+None of these is a board scenario, so they go in their own file with
+`@moduletag :extra`, outside the default suite (`mix test --include extra`).
+
 ---
 
 ## Step 5 — Quality gate

@@ -49,6 +49,22 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 - **Pure `append` by default.** Re-evaluating must be free; the last event in
   log order wins.
 
+## Which tests get written
+
+- **What pins down the board, and nothing else**, under
+  `test/my_app/slices/<slice>/`:
+  - `core_test.exs`: the board's scenarios — `Core.execute/2` of a write slice
+    (its `SPEC_ERROR`s are domain rules), `apply_event/2` of a read slice. One
+    `describe` per scenario, with its title from the board.
+  - `command_test.exs`: the command's shape, from its field schema (rule 3).
+- **Never tests of screens, controllers or plugs** (`test/my_app_web/`): they
+  aren't written and aren't rebuilt.
+- Anything that is not one of those — the mapping of an external response, a
+  TODO queue, an adapter — carries `@moduletag :extra`. The default suite
+  excludes it; run it with `mix test --include extra`.
+- The test `fact` store is emptied at the start of every `mix test`
+  (`fact.reset`). The whole suite takes seconds: there is no reason to skip it.
+
 ## Building a slice
 
 **Always use the matching skill. Never implement a slice by hand.**

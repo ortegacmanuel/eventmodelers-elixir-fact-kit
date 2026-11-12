@@ -102,9 +102,14 @@ defmodule MyApp.MixProject do
       #
       # A release runs no aliases at all, so a deployment has to create the
       # store as its own explicit step. See README.
-      test: ["fact.setup", "test"],
+      # Every run starts from an empty test store. Without it the store grows
+      # on every run — in the project this kit came from it reached 832 MB and
+      # 207,088 files, and the suite went from ~95 s to ~430 s with barely any
+      # new tests.
+      test: ["fact.reset", "fact.setup", "test"],
       "phx.server": ["fact.setup", "phx.server"],
       "fact.setup": &fact_setup/1,
+      "fact.reset": &fact_reset/1,
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind my_app", "esbuild my_app"],
       "assets.deploy": [
@@ -114,6 +119,16 @@ defmodule MyApp.MixProject do
       ],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
+  end
+
+  # Deletes the test event store. Only in `:test`: dev and production stores
+  # are never touched.
+  defp fact_reset(_) do
+    fact_path = Application.get_env(:my_app, :fact_path, "data/fact_db")
+
+    if Mix.env() == :test and String.contains?(fact_path, "test") do
+      File.rm_rf!(fact_path)
+    end
   end
 
   defp fact_setup(_) do
