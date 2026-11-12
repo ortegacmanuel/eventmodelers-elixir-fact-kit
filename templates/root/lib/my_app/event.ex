@@ -12,8 +12,8 @@ defprotocol MyApp.Event do
     name: renaming a module must not rename a fact.
   * `tags` are the board's fields with `idAttribute: true` or `tag: true`.
     `:plot_id` gives `"plot:<value>"`. A subfield goes by its path:
-    `region: [:address, "regionId"]` gives `"region:<value>"`. A tag whose
-    value is nil is left out.
+    `region: [:address, "regionId"]` gives `"region:<value>"`. Through a list,
+    one tag per element: `lot: [:lots, :lot_id]`. A nil value gives no tag.
 
   `to_event/1` returns `%{type:, data:, tags:}`, the shape FACT and UmaDB both
   store.
@@ -57,8 +57,14 @@ defimpl MyApp.Event, for: Any do
   @doc false
   def tags(event, specs) do
     for {name, [field | path]} <- specs,
-        value = get_in(event, [Access.key(field) | path]),
-        value != nil,
+        value <- values(Map.get(event, field), path),
+        uniq: true,
         do: "#{name}:#{value}"
   end
+
+  defp values(nil, _path), do: []
+  defp values(list, path) when is_list(list), do: Enum.flat_map(list, &values(&1, path))
+  defp values(value, []), do: [value]
+  defp values(map, [key | rest]) when is_map(map), do: values(Map.get(map, key), rest)
+  defp values(_value, _path), do: []
 end
