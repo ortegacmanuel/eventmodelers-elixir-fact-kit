@@ -74,7 +74,7 @@ defmodule MyApp.Decide do
       {:ok, events} ->
         fact_events =
           events
-          |> Enum.map(&MyApp.FactEvent.to_fact/1)
+          |> Enum.map(&MyApp.Event.to_event/1)
           |> append_extra_tags(extra_tags)
 
         condition = {core.append_condition(cmd), last_position}

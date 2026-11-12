@@ -6,8 +6,9 @@ wouldn't fetch.
 
 ## The rule, and why it usually suffices
 
-> Every event field with `idAttribute: true` produces a tag
-> `<name without the Id suffix, in snake_case>:<value>`.
+> Every event field — or subfield — with `idAttribute: true` or `tag: true`
+> produces a tag `<name without the Id suffix, in snake_case>:<value>`. A tag
+> that doesn't come from the board is invented.
 
 It works because the board already carries the decision. Whoever modelled the
 slice marked which fields identify things, so the agent derives tags instead of

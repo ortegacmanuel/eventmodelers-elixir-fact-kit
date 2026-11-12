@@ -6,7 +6,7 @@ goes or what each thing is called.
 
 Domain events live in `lib/my_app/slices/<slice>/`, one per file. The framework
 is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex`,
-`state_change.ex`, `state_view.ex`, `fact_event.ex`, `command.ex`.
+`state_change.ex`, `state_view.ex`, `event.ex`, `command.ex`.
 
 ## File constraints
 
@@ -124,13 +124,14 @@ They came from building the first slice **by hand**, before this kit existed.
 Without them an agent produces code that compiles and is wrong. The examples are
 from that slice; the rules are general.
 
-### 1. Tags come from `idAttribute: true`
+### 1. Tags come from `idAttribute: true` and `tag: true`
 
 `slice.json` ships `tags: []` on every element. **Tags aren't empty, they're
 underived.** The rule is mechanical:
 
-> Every event field with `idAttribute: true` produces a tag
-> `<name without the Id suffix, in snake_case>:<value>`.
+> Every event field — or subfield — with `idAttribute: true` or `tag: true`
+> produces a tag `<name without the Id suffix, in snake_case>:<value>`. A tag
+> that doesn't come from the board is invented.
 
 **The event carries all of them; a query picks one.** An event says everything
 it is about — `ComprobacionSolicitada` writes both `comprobacion:` and
@@ -149,7 +150,7 @@ This matters more than anything else here: **tags are the query keys of the
 whole system**. `query/1`, the read models and the TODO queues all ask by them.
 A made-up tag doesn't fail — it silently stops finding events downstream.
 
-If an event has no `idAttribute: true` at all, **stop and invoke
+If an event has no `idAttribute: true` and no `tag: true` at all, **stop and invoke
 `request-feedback`**: an event with no tags can't be queried.
 
 ### 2. Generated fields travel on the command
@@ -287,7 +288,7 @@ you just wrote.** If you don't know what a field means, quote the board's
 ```
 lib/my_app/slices/<slice>/
 ├── <slice>.ex         # command struct         (write slices only)
-├── <event>.ex         # event struct + defimpl FactEvent
+├── <event>.ex         # @derive {MyApp.Event, type:, tags:} + defstruct
 ├── core.ex            # use MyApp.StateChange — all invariants, pure
 ├── context.ex         # public API: generate, build, Decide.execute
 └── processor.ex       # automations only: GenServer polling the TODO queue

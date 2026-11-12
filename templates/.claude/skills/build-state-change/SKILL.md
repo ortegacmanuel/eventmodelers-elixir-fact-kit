@@ -25,7 +25,7 @@ Context.function(...)  →  Decide.execute(db, Core, cmd)
                               1. Reader.read(db, Core.query(cmd))     → events
                               2. Enum.reduce(…, Core.apply_event/2)   → state
                               3. Core.execute(cmd, state)             → {:ok, [ev]} | {:error, m}
-                              4. FactEvent.to_fact/1                  → maps
+                              4. MyApp.Event.to_event/1               → maps
                               5. Fact.append(db, …, {append_condition, pos})
                               6. wait until the write is visible
 ```
@@ -129,27 +129,26 @@ isn't in the code".
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.<Event> do
-  defstruct [:field_a, :field_b]
-
-  defimpl MyApp.FactEvent do
-    def to_fact(e) do
-      %{
-        type: "<Event>",
-        data: Map.from_struct(e),
-        tags: ["<entity>:#{e.<entity>_id}", "<other>:#{e.<other>_id}"]
-      }
-    end
-  end
+  @derive {MyApp.Event,
+           type: "<Event>",
+           tags: [:<entity>_id, :<other>_id, <sub>: [:<field>, "<subId>"]]}
+  defstruct [:<entity>_id, :<other>_id, :<field>, :field_a]
 end
 ```
+
+That's the whole file: the struct with every field in `events[].fields[]`, in
+`snake_case`, and its declaration. `MyApp.Event` (`lib/my_app/event.ex`)
+builds `%{type:, data:, tags:}` from it. `defstruct`, not a schema: nothing
+casts an event, and other slices read it as a raw map.
 
 ### The tags (a rule `slice.json` doesn't state)
 
 `slice.json` ships `tags: []` on every element. **They aren't empty, they're
 underived.**
 
-> Every event field with `idAttribute: true` produces a tag
-> `<name without the Id suffix, in snake_case>:<value>`.
+> Every event field — or subfield — with `idAttribute: true` or `tag: true`
+> produces a tag `<name without the Id suffix, in snake_case>:<value>`. A tag
+> that doesn't come from the board is invented.
 
 **The event carries all of them; a query picks one.** An event says everything
 it is about — `ComprobacionSolicitada` writes both `comprobacion:` and
@@ -162,13 +161,15 @@ The consequence worth remembering: **a query can only scope by a tag its events
 actually carry.** Scope by one nothing writes and the query finds nothing, in
 silence.
 
-`checkId` → `"check:#{e.check_id}"`. `sessionId` → `"session:#{e.session_id}"`.
+`checkId` → `:check_id` → `"check:<value>"`. A subfield goes by its path:
+`regionId` inside `address` → `region: [:address, "regionId"]`. A tag with no
+value in a given event is left out.
 
 **This matters more than anything else in this skill.** Tags are the query keys
 of the whole system: `query/1`, the read models and the TODO queues all ask by
 them. A made-up tag doesn't fail — it silently stops finding events downstream.
 
-If an event has no `idAttribute: true` at all, **stop and invoke
+If an event has no `idAttribute: true` and no `tag: true` at all, **stop and invoke
 `request-feedback`**: an event with no tags can't be queried.
 
 > **When the rule runs out**, read `references/finding-tags.md`. It carries the
@@ -178,8 +179,13 @@ If an event has no `idAttribute: true` at all, **stop and invoke
 
 ### The event type
 
-`type:` is the event's `title` **verbatim**, PascalCase, no spaces. It's the
-string other slices' `apply_event/2` match on, so don't embellish it.
+`type:` is the event's `title` **verbatim**, PascalCase, no spaces. It's what the
+store keeps and the string other slices' `apply_event/2` match on, so it is
+declared, never derived from the module name: renaming a module must not rename
+a fact.
+
+`test/my_app/event_spec_test.exs` checks every event's `type:` and `tags:`
+against `slice.json`.
 
 ---
 
@@ -400,8 +406,8 @@ Rules:
 - **The pure `Core` only.** No store, no `Context`, no `ConnCase`.
 - **The data comes from `specifications[].given/when/then[].fields[].example`**,
   literally. Don't invent values: the board's are usually measured.
-- **Test `FactEvent.to_fact/1` too**: type, data and **the tags**. It's the only
-  thing that pins down the rule from step 4.
+- The tags are pinned down by `event_spec_test.exs` against the board; no
+  per-slice test of `MyApp.Event.to_event/1` is needed.
 - The `given` events are built as **string-keyed maps**, respecting the boundary
   that keeps slices independent.
 - A `SPEC_ERROR` scenario is a domain rule: `assert {:error, :reason} = Core.execute(...)`.
@@ -454,7 +460,9 @@ Never commit with warnings.
 - [ ] Every field in `events[].fields[]` is in the event struct.
 - [ ] No invented fields — except the generated ones from step 3.
 - [ ] No `@moduledoc`, no `@doc`, no comment restating the board (`.build-kit/CLAUDE.md`, "No prose in slices").
-- [ ] Every `idAttribute: true` produces its tag.
+- [ ] The event is `@derive {MyApp.Event, type:, tags:}` + `defstruct`; `type:`
+      is the board's title; every `idAttribute: true` / `tag: true` field or
+      subfield is in `tags:`, and nothing else.
 - [ ] Every `specifications[]` has its `describe` in the test.
 - [ ] `Core` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.
 - [ ] `Core` holds no shape checks: only the board's domain rules, one atom

@@ -10,7 +10,7 @@ system on this framework. These aren't hypotheses — each one cost a round trip
 ## The framework
 
 - `lib/my_app/`: `decide.ex`, `reader.ex`, `state_change.ex`, `state_view.ex`,
-  `fact_event.ex`, `command.ex`. **Don't touch them** unless asked.
+  `event.ex`, `command.ex`. **Don't touch them** unless asked.
 - `Decide` waits until the write is visible before returning: `Fact.append/3`
   confirms 7–10 ms before a subsequent read can see it. Without that wait, a
   LiveView that writes and immediately repaints shows the old state.
