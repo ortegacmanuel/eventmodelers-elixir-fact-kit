@@ -152,12 +152,6 @@ point is a **Phoenix controller**, not a processor. Use `/build-webhook`.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Processor do
-  @moduledoc """
-  Automation: watches <the queue>, <does the work> and records <the event>.
-
-  <And the numbers that justify the interval and the timeouts. A `@poll_interval`
-  with no measurement beside it is an invented number.>
-  """
 
   use GenServer
 
@@ -166,6 +160,7 @@ defmodule MyApp.Slices.<Slice>.Processor do
   alias MyApp.Slices.<Queue>.Context, as: Queue
   alias MyApp.Slices.<Slice>.Context, as: <Slice>
 
+  # <the measurement that justifies it>
   @poll_interval :timer.seconds(5)
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -282,7 +277,7 @@ leave the item in the queue** — don't invent a failure event: that's a modelli
 decision, not an implementation one, and it belongs to the board.
 
 And if the external system failing produces a **reassuring** result rather than a
-visible error, say so in the `@moduledoc` in plain words. That's the class of
+visible error, say so in a one-line comment where it's handled. That's the class of
 failure nobody discovers in time.
 
 ---

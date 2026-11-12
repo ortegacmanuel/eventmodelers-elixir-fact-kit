@@ -57,60 +57,31 @@ Pull out:
 
 ---
 
-## Step 2 — The command struct
+## Step 2 — The command
 
 **File:** `lib/my_app/slices/<slice>/<slice>.ex`
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.<Slice> do
-  @moduledoc """
-  Command: <what the actor wants to do, in one domain sentence>.
+  use MyApp.Command
 
-  <And why the fields are these. If there are generated fields, say here that
-  they travel on the command even though the board doesn't list them — see
-  below.>
-  """
-
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @primary_key false
   embedded_schema do
+    field :<entity>_id, :string
     field :field_a, :string
     field :field_b, :integer
-    field :<entity>_id, :string     # generated, step 3
-  end
-
-  # The board's fields, cast from the caller's params.
-  @fields [:field_a, :field_b]
-  # Every field with `optional: false` in slice.json.
-  @required [:field_a, :field_b]
-
-  @doc """
-  Builds the command, or says why its shape is wrong. Pure.
-  `generated` carries the identifiers and timestamps `context.ex` creates.
-  """
-  def new(params, generated \\ %{}) do
-    params |> changeset(generated) |> apply_action(:new)
-  end
-
-  @doc "The changeset a form validates against as the user types."
-  def changeset(params, generated \\ %{}) do
-    %__MODULE__{}
-    |> cast(params, @fields)
-    |> change(generated)
-    |> validate_required(@required)
   end
 end
 ```
 
+That's the whole file. `use MyApp.Command` (`lib/my_app/command.ex`) gives it
+`new/2` and `changeset/2`: **every field is required** unless named in
+`optional:` — `use MyApp.Command, optional: [:field_b]` for the fields with
+`optional: true` on the board.
+
 **The fields are the ones in `commands[].fields[]` in `snake_case`**, plus the
-generated ones from step 3.
+generated ones from step 3. Types:
 
-**The changeset is derived from the field schema, and only from it** (rule 3 of
-`.build-kit/CLAUDE.md`):
-
-| `slice.json` | changeset |
+| `slice.json` | `field` |
 |---|---|
 | `type: "String"` / `"UUID"` | `:string` |
 | `type: "Int"` | `:integer` |
@@ -120,12 +91,15 @@ generated ones from step 3.
 | `type: "DateTime"` | `:string` (ISO 8601, as the events carry it) |
 | `type: "Custom"` | `:map` |
 | `cardinality: "List"` | `{:array, <type>}` |
-| `optional: false` | in `@required` |
-| a closed list in the field's `description` | `validate_inclusion/3` |
-| a format in the field's `description` | `validate_format/3` |
+| `optional: true` | in `optional:` |
 
-Don't add a shape rule the schema or the description doesn't state. Shape is
-never in `core.ex`: `Core` assumes a well-formed command.
+A closed list or a format **stated in the field's `description`** goes in an
+override of `changeset/2` that calls `super/2` and adds `validate_inclusion/3`
+or `validate_format/3`. Nothing else: no shape rule the schema or the
+description doesn't state, and never in `core.ex`.
+
+**No messages in the command.** A missing field comes back as an error key
+(`validation: :required`); the screen turns it into words.
 
 ---
 
@@ -142,7 +116,7 @@ the decision impossible to test without a clock and without seeding randomness.
 > command's fields.
 
 This is the **only** authorised deviation from "if it isn't in `slice.json`, it
-isn't in the code". Write it down in the command's `@moduledoc`, with the reason.
+isn't in the code".
 
 - Identifiers → `Ecto.UUID.generate()`
 - Timestamps → `DateTime.utc_now() |> DateTime.to_iso8601()`
@@ -155,13 +129,6 @@ isn't in the code". Write it down in the command's `@moduledoc`, with the reason
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.<Event> do
-  @moduledoc """
-  Event: <what happened, past tense, in domain language>.
-
-  <What it does NOT imply. The board's description usually says, and it's usually
-  the most valuable thing there.>
-  """
-
   defstruct [:field_a, :field_b]
 
   defimpl MyApp.FactEvent do
@@ -222,11 +189,6 @@ string other slices' `apply_event/2` match on, so don't embellish it.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Core do
-  @moduledoc """
-  <What it decides, and by what rules. If the board removed rules that seem
-  obvious, say which and why: that's what stops them coming back.>
-  """
-
   use MyApp.StateChange
 
   alias MyApp.Slices.<Slice>.{<Command>, <Event>}
@@ -248,8 +210,6 @@ defmodule MyApp.Slices.<Slice>.Core do
   def execute(_cmd, %{already_happened: true}), do: {:ok, []}
 
   def execute(%<Command>{} = cmd, _state) do
-    # Domain rules only — the board's SPEC_ERROR scenarios. The command's
-    # shape was checked when it was built.
     {:ok, [%<Event>{...}]}
   end
 end
@@ -291,8 +251,6 @@ business rule.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Context do
-  @moduledoc "Public API of <the slice>."
-
   alias MyApp.Slices.<Slice>.{<Command>, Core}
 
   require Logger
@@ -305,16 +263,12 @@ defmodule MyApp.Slices.<Slice>.Context do
       <timestamp>: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    # Shape first: an ill-formed command never reads the store.
     with {:ok, cmd} <- <Command>.new(params, generated),
          {:ok, _events} <- write(cmd) do
       {:ok, id}
     end
   end
 
-  # `Application.fact_db/0` **raises** if the store isn't up, and this gets
-  # called from LiveView handlers: an exception there kills the visitor's
-  # session and takes with it whatever they had just entered.
   defp write(cmd) do
     MyApp.Decide.execute(MyApp.Application.fact_db(), Core, cmd)
   rescue
@@ -325,13 +279,19 @@ defmodule MyApp.Slices.<Slice>.Context do
 end
 ```
 
+Shape first: an ill-formed command never reads the store. And `write/1`
+rescues because `Application.fact_db/0` **raises** if the store isn't up, and
+this gets called from LiveView handlers: an exception there kills the visitor's
+session and takes with it whatever they had just entered.
+
 Return `{:ok, <identifier>}`, not `{:ok, events}`: the identifier is what the
 layer above needs to subscribe to the result and to show the reference.
 
 The two ways it says no, and what the user sees:
 
 - `{:error, %Ecto.Changeset{}}` — the shape is wrong. The form renders it with
-  `to_form/1`: the message sits under the field.
+  `to_form/1`, under each field; the words come from `translate_error/1`
+  (Gettext), never from the command.
 - `{:error, atom}` — a domain rule refused it (a board `SPEC_ERROR`). The screen
   translates the atom.
 
@@ -350,7 +310,7 @@ stating because otherwise it gets copied without its conditions:
 > be accepted?" without sending it.
 
 For **shape**, the view doesn't need this seam: it validates against
-`<Command>.changeset/2` on `phx-change`, the usual Phoenix way. The seam is for a
+`<Command>.changeset/1` on `phx-change`, the usual Phoenix way. The seam is for a
 **domain** check that needs no history.
 
 The case that earns it: a form or a map that has to enable or disable its submit
@@ -431,7 +391,7 @@ Rules:
 
 - One test for the board's example: `{:ok, %<Command>{}} = <Command>.new(params)`
   with the `when` fields of a specification.
-- One test per `@required` field: without it, `{:error, changeset}` with the
+- One test per required field: without it, `{:error, changeset}` with the
   error on that field (`errors_on`-style: `changeset.errors[:field]`).
 - One per closed list or format the description states.
 - If the board still carries a shape `SPEC_ERROR` scenario, its `describe` goes
@@ -458,11 +418,13 @@ Never commit with warnings.
 ## Final check against `slice.json`
 
 - [ ] Every field in `commands[].fields[]` is in the command's `embedded_schema`.
-- [ ] Every `optional: false` field is in `@required`; no shape rule the schema
-      or the description doesn't state.
+- [ ] The command is `use MyApp.Command` + `embedded_schema`; only the
+      `optional: true` fields in `optional:`; no shape rule the schema or the
+      description doesn't state; no messages.
 - [ ] `context.ex` builds the command with `new/2` before calling `Decide`.
 - [ ] Every field in `events[].fields[]` is in the event struct.
-- [ ] No invented fields — except the generated ones from step 3, documented.
+- [ ] No invented fields — except the generated ones from step 3.
+- [ ] No `@moduledoc`, no `@doc`, no comment restating the board (`.build-kit/CLAUDE.md`, "No prose in slices").
 - [ ] Every `idAttribute: true` produces its tag.
 - [ ] Every `specifications[]` has its `describe` in the test.
 - [ ] `Core` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.

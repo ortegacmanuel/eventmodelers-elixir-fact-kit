@@ -75,12 +75,7 @@ in**, not the other way round.
 
 ```elixir
 defmodule MyAppWeb.<Slice>WebhookController do
-  @moduledoc """
-  Entry point for <the external system>.
-
-  <What it sends, when, and what it expects back. If the provider retries on
-  failure, say so here: it completely changes how you must respond.>
-  """
+  # <If the provider retries on failure, say so in one line: it changes how you respond.>
 
   use MyAppWeb, :controller
 
@@ -131,13 +126,6 @@ signature against the stashed body and **halts with 401** if it doesn't match.
 
 ```elixir
 defmodule MyAppWeb.Plugs.<External>WebhookSignature do
-  @moduledoc """
-  Verifies <external>'s signature against the **raw** body.
-
-  It's a plug and not the controller because `Plug.Parsers` has already consumed
-  the body by the time the controller runs, and signing over re-serialised JSON
-  doesn't match: key order and whitespace change.
-  """
 
   import Plug.Conn
 

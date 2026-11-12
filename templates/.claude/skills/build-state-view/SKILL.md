@@ -65,12 +65,6 @@ Two files, not four: `core.ex` and `context.ex`. No command, no event.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Core do
-  @moduledoc """
-  <What this view answers, and what it's scoped by. And what it does NOT
-  answer — there's usually a similar view with a different scope, and confusing
-  them is the classic mistake.>
-  """
-
   @behaviour MyApp.StateView
 
   @impl true
@@ -134,7 +128,7 @@ read model field is the `idAttribute`.
 
 **Exception: a TODO queue isn't scoped by tag.** Its consumer is a processor,
 which has no session or any other identity to filter by. The query goes by types
-alone, and that's correct — say so in the `@moduledoc` so nobody "fixes" it.
+alone, and that's correct — say so in a one-line comment on `query/1` so nobody "fixes" it.
 
 > **And you can check which one this is.** Nothing in a read slice's own
 > `slice.json` distinguishes a queue from a scoped view — same `sliceType`, same
@@ -168,8 +162,6 @@ may not be what the screen wants.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Context do
-  @moduledoc "Public API of <the view>."
-
   alias MyApp.Slices.<Slice>.Core
 
   def <verb>(<key>) do

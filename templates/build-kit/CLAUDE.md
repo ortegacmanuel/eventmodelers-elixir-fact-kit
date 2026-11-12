@@ -6,7 +6,7 @@ goes or what each thing is called.
 
 Domain events live in `lib/my_app/slices/<slice>/`, one per file. The framework
 is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex`,
-`state_change.ex`, `state_view.ex`, `fact_event.ex`.
+`state_change.ex`, `state_view.ex`, `fact_event.ex`, `command.ex`.
 
 ## File constraints
 
@@ -30,6 +30,11 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
   `schema "..."`, no migrations: the store is `fact` and read models are
   folded. `core.ex`, events and views never touch Ecto. Identifiers:
   `Ecto.UUID.generate/0`, called in `context.ex`.
+- **No prose in slices.** The board is the documentation: everyone reads the
+  model, and the code is generated from it. No `@moduledoc`, no `@doc`, no
+  comment that restates a field, a rule or a scenario. A comment is one line,
+  and only for what the board doesn't carry: an assumption you made, where a
+  constant comes from, a quirk of an external system.
 - **HTTP:** `Req`. Never `httpoison`, `tesla` or `httpc`.
 - **Never nest modules in one file**: it causes cyclic dependency errors.
 
@@ -156,7 +161,7 @@ If an event has no `idAttribute: true` at all, **stop and invoke
 > fields.
 
 This is the only authorised deviation from "if it isn't in `slice.json`, it
-isn't in the code". Document it in the command's `@moduledoc`.
+isn't in the code".
 
 ### 3. Shape is the command's job; `core.ex` holds the domain
 
@@ -169,13 +174,12 @@ So the board's `SPEC_ERROR` scenarios are **domain rules**, and the shape of a
 command is not on the board as scenarios — it is in the command's
 `fields[]`. The build splits along the same line:
 
-- **Shape → the command's changeset.** `<Command>.new/2` casts and validates,
-  and returns `{:ok, cmd}` or `{:error, %Ecto.Changeset{}}`. It comes from the
-  field schema, mechanically: `type` → Ecto type, `optional: false` →
-  `validate_required`, `cardinality: "List"` → `{:array, type}`, a closed list
-  or a format stated in the field's `description` → `validate_inclusion` /
-  `validate_format`. Nothing else: no shape rule the schema or the description
-  doesn't state.
+- **Shape → the command.** A command is `use MyApp.Command` plus an
+  `embedded_schema` with the board's fields: every field is required unless
+  it's `optional: true` on the board. `<Command>.new/2` returns `{:ok, cmd}` or
+  `{:error, %Ecto.Changeset{}}`. A closed list or a format stated in the
+  field's `description` → `validate_inclusion` / `validate_format`. Nothing
+  else, and no messages: the error is a key, the screen picks the words.
 - **Domain → `core.ex`.** `execute/2` assumes a well-formed command and holds
   only the rules a domain expert would state: the `SPEC_ERROR` scenarios. A
   rule needing no history is still domain if it relates fields to each other
