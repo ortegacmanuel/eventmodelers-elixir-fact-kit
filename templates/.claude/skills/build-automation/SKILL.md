@@ -150,6 +150,12 @@ point is a **Phoenix controller**, not a processor. Use `/build-webhook`.
 
 **File:** `lib/my_app/slices/<slice>/processor.ex`
 
+The processor is the only file in a slice that may name another slice: the
+`Context` of its queue, of the slice whose command it issues, and of a view it
+consults. Never a `Core`, never a struct. Whatever it reads from a view is not
+in the command's append condition, so a rule that matters is checked again in
+that command's `execute/2`.
+
 ```elixir
 defmodule MyApp.Slices.<Slice>.Processor do
 

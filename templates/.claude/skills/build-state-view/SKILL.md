@@ -90,7 +90,9 @@ defmodule MyApp.Slices.<Slice>.Core do
 end
 ```
 
-Note `@behaviour` and not `use`: `StateView` injects nothing. Like the write
+Note `@behaviour` and not `use`: `StateView` injects nothing. **A view never
+calls another view**, and never uses a fold shared with other slices: if it
+needs the same events another view folds, it folds them itself. Like the write
 side, **`core.ex` is the contract and nothing else**: `query`, `initial_state`,
 `apply_event`, and when needed `next_query` and `project`. No other `def` or
 `defp`.

@@ -270,9 +270,9 @@ folds, which rules refuse, what it records.
 
 - The rules are inline in `execute/2`: a `cond` that names the rejection, then
   the event built in place.
-- Knowledge several slices share (a catalogue, a calendar rule) lives in a
-  module under `lib/my_app/` outside `slices/`, and `execute/2` calls it. Only
-  when it's genuinely shared: that module is a dependency between slices.
+- Nothing from another slice: no `Core`, no `Context`, no fold shared with
+  other slices. A catalogue several slices need can be a declared domain
+  module (`.build-kit/CLAUDE.md`), pure and folding no events.
 - `test/my_app/core_contract_test.exs` fails on any other function in a
   `core.ex`.
 

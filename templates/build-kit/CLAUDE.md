@@ -55,9 +55,22 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
   what waits until the write is visible.
 - **Every read goes through `MyApp.Reader.read/2`**, not `Fact.read` directly:
   it picks an index instead of scanning the ledger.
-- **Slices don't couple.** They share only the event type *strings*. Never
-  shared structs: `apply_event/2` matches raw maps
-  (`%{"event_type" => ..., "event_data" => ...}`).
+- **A slice names only itself, the framework and the declared domain
+  modules.** Slices share only the events — their type and fields as on the
+  board — read as raw maps (`%{"event_type" => ..., "event_data" => ...}`),
+  never another slice's struct. No view calls another view; no module outside
+  `slices/` folds events for several slices: each slice folds its own.
+  - **The one exception is an automation's `processor.ex`:** it may call the
+    `Context` of its queue, of the slice whose command it issues and of a view
+    it consults — always the `Context`, never a `Core` or a struct. What it
+    reads that way is not in the command's append condition, so any rule that
+    matters is checked again in that command's `execute/2`.
+  - **Declared domain modules** are shared knowledge that folds no events: a
+    catalogue, a version, a calendar rule. They are pure (no store, no clock)
+    and listed in `test/my_app/slice_isolation_test.exs`. Declaring one is the
+    project's decision, never the loop's: if you need one, `request-feedback`.
+
+  `slice_isolation_test.exs` enforces all of it.
 - **Pure `append` by default.** Re-evaluating must be free; the last event in
   log order wins.
 
