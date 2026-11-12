@@ -1,7 +1,7 @@
 defmodule MyApp.SliceIsolationTest do
   use ExUnit.Case, async: true
 
-  @framework ~w(Application Decide Reader Command Event StateChange StateView)
+  @framework ~w(Application TaskSupervisor Decide Reader Command Event StateChange StateView)
 
   # The project's declared domain modules: shared knowledge that folds no
   # events (a catalogue, a calendar rule). Empty until the project decides one.
