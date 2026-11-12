@@ -43,9 +43,13 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 - **All invariants live in `core.ex`, which is pure.** No side effects, no
   network, no store access. `execute/2` returns `{:ok, [events]}` or
   `{:error, atom}`.
-- **`core.ex` is the contract and nothing else:** `query`, `initial_state`,
-  `apply_event`, `execute` (and `append_condition` when overridden). No other
-  `def` or `defp`; `core_contract_test.exs` enforces it.
+- **`core.ex` is the contract and nothing else.** A write slice: `query`,
+  `initial_state`, `apply_event`, `execute` (and `append_condition` when
+  overridden). A read slice: `query`, `initial_state`, `apply_event`, and when
+  needed `next_query` and `project`. No other `def` or `defp`;
+  `core_contract_test.exs` enforces it.
+- **Every read model goes through `MyApp.StateView.read/3`**: `context.ex` is
+  one line.
 - **Every write goes through `MyApp.Decide.execute/4`.** Never call
   `Fact.append` directly: `Decide` is what retries on concurrency conflicts and
   what waits until the write is visible.

@@ -1,7 +1,7 @@
 defmodule MyApp.CoreContractTest do
   use ExUnit.Case, async: true
 
-  @contract ~w(query append_condition initial_state apply_event execute)
+  @contract ~w(query append_condition initial_state apply_event execute next_query project)
 
   test "a slice's core.ex defines only the contract's functions" do
     offences =

@@ -34,9 +34,11 @@ A view that is **folded on the fly from the events**. In this stack there is **n
 migration, no table, no materialised projection**: you read and reduce.
 
 ```
-Context.function(args)  →  Reader.read(db, Core.query(args))
-                        →  Enum.reduce(events, Core.initial_state(), &Core.apply_event/2)
-                        →  shape the result
+Context.function(args)  →  MyApp.StateView.read(db, Core, args)
+                              1. Reader.read(db, Core.query(args))
+                              2. fold with Core.initial_state/0 + Core.apply_event/2
+                              3. Core.next_query(state) → read what's new, fold again (optional)
+                              4. Core.project(state, args)                             (optional)
 ```
 
 Two files, not four: `core.ex` and `context.ex`. No command, no event.
@@ -82,10 +84,40 @@ defmodule MyApp.Slices.<Slice>.Core do
   end
 
   def apply_event(state, _), do: state
+
+  @impl true
+  def project(state, _args), do: state
 end
 ```
 
-Note `@behaviour` and not `use`: `StateView` injects nothing.
+Note `@behaviour` and not `use`: `StateView` injects nothing. Like the write
+side, **`core.ex` is the contract and nothing else**: `query`, `initial_state`,
+`apply_event`, and when needed `next_query` and `project`. No other `def` or
+`defp`.
+
+### When one query can't name it all: `next_query/1`
+
+Sometimes the view needs events it can only name after reading others: the
+plots of the receptions of a lot aren't tagged with the lot, because they
+existed before it. Don't read in rounds by hand in `context.ex`.
+`next_query(state)` returns every follow-up query the folded state implies;
+`StateView.read/3` reads the ones it hasn't read yet, folds again, and stops
+when none are new.
+
+```elixir
+@impl true
+def next_query(state) do
+  for id <- state.reception_ids,
+      do: Fact.QueryItem.types(["ReceptionRegistered"]) |> Fact.QueryItem.tags(["reception:#{id}"])
+end
+```
+
+### `project/2`: from folded state to read model
+
+The read model's fields that **combine several events** — the worst result, a
+count, an order — are computed in `project/2`, inline. The arguments are the
+same the call got (a key, today's date). Without `project/2`, the folded state
+is the read model.
 
 ### The query names EVERY type the view needs
 
@@ -145,7 +177,7 @@ alone, and that's correct — say so in a one-line comment on `query/1` so nobod
 
 A field with `mapping: "derived:presence of <Event>"` is
 `%{state | status: "resolved"}` inside that event's `apply_event/2`. A `derived:`
-that combines several is computed at the end, in `context.ex`.
+that combines several is computed at the end, in `project/2`.
 
 **Never store on the event something you can derive on read.** If it feels like a
 field is missing, it almost always needs deriving.
@@ -153,7 +185,7 @@ field is missing, it almost always needs deriving.
 ### Lists
 
 With `cardinality: "List"` the state carries a list and `apply_event/2` extends
-it. Order it explicitly in `context.ex` — the arrival order is log order, which
+it. Order it explicitly in `project/2` — the arrival order is log order, which
 may not be what the screen wants.
 
 ---
@@ -164,23 +196,14 @@ may not be what the screen wants.
 defmodule MyApp.Slices.<Slice>.Context do
   alias MyApp.Slices.<Slice>.Core
 
-  def <verb>(<key>) do
-    MyApp.Application.fact_db()
-    |> MyApp.Reader.read(Core.query(<key>))
-    |> Enum.reduce(Core.initial_state(), &Core.apply_event(&2, &1))
-    |> shape()
-  end
-
-  defp shape(state), do: state
+  def <verb>(<key>), do: MyApp.StateView.read(MyApp.Application.fact_db(), Core, <key>)
 end
 ```
 
-**Always `MyApp.Reader.read/2`, never `Fact.read/2`.** `Reader` picks an index
-instead of scanning the whole ledger; the difference is three orders of magnitude
-once history grows.
+One line. `StateView.read/3` reads through `MyApp.Reader` (indexes, never a
+ledger scan), follows `next_query/1` and calls `project/2`.
 
-`shape/1` is where the derived values that combine several events go, and where
-lists get ordered. No presentation formatting: formatted strings, translated
+No presentation formatting in `project/2` either: formatted strings, translated
 text and rendering decisions belong to the screen, not the model.
 
 ---
