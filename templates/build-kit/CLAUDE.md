@@ -283,6 +283,28 @@ Rule while writing it: **everything comes from `slice.json` and from the code
 you just wrote.** If you don't know what a field means, quote the board's
 `description` instead of paraphrasing. Don't propose layout, copy or colours.
 
+### When the screen gets built
+
+Whoever builds the LiveView from the brief follows the same idea as the domain:
+the screen holds presentation only.
+
+- **One form, from the command.** `to_form(<Command>.changeset(params, derived))`
+  in `mount` and on every `phx-change`, with `action: :validate`. The values the
+  screen derives (ids from the URL, the session's account, a field assembled
+  from several inputs) go as the second argument; the user's inputs stay the
+  form's params. No parallel map of values, no form that starts as `nil`.
+- **Errors per field, with `used_input?/1`**, the way Phoenix's `<.input>` shows
+  them: an error appears once the field was touched or the form submitted. The
+  words come from `translate_error/1` (Gettext).
+- **Uploads:** `allow_upload/3` rejects size and type; show `upload_errors/2`
+  under the input as soon as a file is picked. Check the form's shape before
+  consuming the upload, so a missing field doesn't cost the user their file.
+- **No domain or catalogue knowledge in the screen.** A list of types, a rule,
+  a threshold: read it from where the domain keeps it. The domain's error
+  atoms are translated into words, nothing more.
+- **No prose:** no `@moduledoc` or `@doc`, a comment only for what the board
+  doesn't carry.
+
 ## Slice shape
 
 ```
