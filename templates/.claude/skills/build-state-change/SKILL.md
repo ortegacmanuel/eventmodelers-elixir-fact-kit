@@ -246,8 +246,22 @@ Error reasons are **domain atoms** (`:geometry_outside_country`,
   (`x || %{}`, `x || "LOW"`). If it can't be nil, don't handle nil.
 - An event field whose `mapping` is a command field copies the command field.
   Don't re-derive it.
-- Helpers are `defp`. No public list of rejection reasons, no optional
-  arguments nobody passes.
+- No public list of rejection reasons, no optional arguments nobody passes.
+
+### `core.ex` is the contract and nothing else
+
+`core.ex` defines `query/1`, `initial_state/0`, `apply_event/2`, `execute/2`
+and, when it's overridden, `append_condition/1`. **No other `def` or `defp`.**
+Whoever opens the file reads the decision top to bottom: what it reads, how it
+folds, which rules refuse, what it records.
+
+- The rules are inline in `execute/2`: a `cond` that names the rejection, then
+  the event built in place.
+- Knowledge several slices share (a catalogue, a calendar rule) lives in a
+  module under `lib/my_app/` outside `slices/`, and `execute/2` calls it. Only
+  when it's genuinely shared: that module is a dependency between slices.
+- `test/my_app/core_contract_test.exs` fails on any other function in a
+  `core.ex`.
 
 ### Thresholds get justified
 
@@ -445,6 +459,7 @@ Never commit with warnings.
 - [ ] `Core` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.
 - [ ] `Core` holds no shape checks: only the board's domain rules, one atom
       per `SPEC_ERROR`, no defensive fallbacks.
+- [ ] `core.ex` defines only the contract's functions: no helpers.
 - [ ] `context.ex` passes `params` straight to `new/2`: no field re-picking, no
       cleaning, generated values inline.
 - [ ] `apply_event/2` has a final clause ignoring what isn't its own.
