@@ -44,8 +44,8 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
   network, no store access. `execute/2` returns `{:ok, [events]}` or
   `{:error, atom}`.
 - **`core.ex` is the contract and nothing else.** A write slice: `query`,
-  `initial_state`, `apply_event`, `execute` (and `append_condition` when
-  overridden). A read slice: `query`, `initial_state`, `apply_event`, and when
+  `initial_state`, `apply_event`, `execute`, and when needed `next_query` and
+  an overridden `append_condition`. A read slice: `query`, `initial_state`, `apply_event`, and when
   needed `next_query` and `project`. No other `def` or `defp`;
   `core_contract_test.exs` enforces it.
 - **Every read model goes through `MyApp.StateView.read/3`**: `context.ex` is
@@ -63,12 +63,17 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 
 ## Which tests get written
 
-- **What pins down the board, and nothing else**, under
-  `test/my_app/slices/<slice>/`:
-  - `core_test.exs`: the board's scenarios — `Core.execute/2` of a write slice
-    (its `SPEC_ERROR`s are domain rules), `apply_event/2` of a read slice. One
-    `describe` per scenario, with its title from the board.
-  - `command_test.exs`: the command's shape, from its field schema (rule 3).
+- **The board's scenarios, and nothing else.** One file per slice,
+  `test/my_app/slices/<slice>/core_test.exs`, with one `describe` per scenario,
+  titled exactly as on the board:
+  - a write slice: `Core.execute/2` over the `given` events, asserting the
+    `then` — the events, or the `SPEC_ERROR`'s atom;
+  - a read slice: `Core.project/2` (or the folded state, without `project/2`)
+    over the `given` events, asserting the `then`.
+
+  No test outside a `describe`, and none of the command's shape, the initial
+  state, the tags or the order of arrival. `test/my_app/scenario_tests_test.exs`
+  enforces it against `slice.json`.
 - **Never tests of screens, controllers or plugs** (`test/my_app_web/`): they
   aren't written and aren't rebuilt.
 - Anything that is not one of those — the mapping of an external response, a
@@ -198,9 +203,8 @@ command is not on the board as scenarios — it is in the command's
   (`to_form/1`); domain atoms are translated by the screen, as before.
 - **Tie-break:** if the rule's wording would change when the screen or the API
   changed, it is shape.
-- **An older board may still carry shape scenarios.** Implement them in the
-  changeset and test them in `command_test.exs` under the scenario's literal
-  title — not in `Core`.
+- **An older board may still carry shape scenarios.** Don't build them as
+  domain rules: invoke `request-feedback` to have them removed from the board.
 
 ## What this kit does NOT do: screens
 

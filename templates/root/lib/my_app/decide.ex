@@ -68,7 +68,7 @@ defmodule MyApp.Decide do
   end
 
   defp do_execute(db, core, cmd, extra_tags, retries) do
-    {state, last_position} = read_and_fold(db, core, cmd)
+    {state, last_position, follow_ups} = read_and_fold(db, core, cmd)
 
     case core.execute(cmd, state) do
       {:ok, events} ->
@@ -77,7 +77,9 @@ defmodule MyApp.Decide do
           |> Enum.map(&MyApp.Event.to_event/1)
           |> append_extra_tags(extra_tags)
 
-        condition = {core.append_condition(cmd), last_position}
+        condition =
+          {Fact.QueryItem.join(List.wrap(core.append_condition(cmd)) ++ follow_ups),
+           last_position}
 
         case Fact.append(db, fact_events, condition) do
           {:ok, position} ->
@@ -133,14 +135,41 @@ defmodule MyApp.Decide do
     end
   end
 
-  # Returns the folded state and the anchor for the append condition.
+  # Returns the folded state, the anchor for the append condition and the
+  # follow-up queries read through `next_query/1`, which join the condition: a
+  # decision is invalidated by a change to anything it read.
   # See the moduledoc: today the anchor is the last folded event's position, and
   # this is where you raise it to the visibility mark once the ledger grows.
   defp read_and_fold(db, core, cmd) do
-    MyApp.Reader.read(db, core.query(cmd))
-    |> Enum.reduce({core.initial_state(), 0}, fn event, {state, _pos} ->
-      {core.apply_event(state, event), event["store_position"] || 0}
-    end)
+    Code.ensure_loaded!(core)
+    first = List.wrap(core.query(cmd))
+    {state, last, read} = follow(db, core, MyApp.Reader.read(db, first), MapSet.new(first))
+    {state, last, Enum.reject(MapSet.to_list(read), &(&1 in first))}
+  end
+
+  defp follow(db, core, events, read) do
+    {state, last} =
+      Enum.reduce(events, {core.initial_state(), 0}, fn event, {state, _pos} ->
+        {core.apply_event(state, event), event["store_position"] || 0}
+      end)
+
+    new =
+      if function_exported?(core, :next_query, 1),
+        do: state |> core.next_query() |> List.wrap() |> Enum.reject(&MapSet.member?(read, &1)),
+        else: []
+
+    case new do
+      [] ->
+        {state, last, read}
+
+      items ->
+        events =
+          (events ++ MyApp.Reader.read(db, items))
+          |> Enum.uniq_by(& &1["event_id"])
+          |> Enum.sort_by(& &1["store_position"])
+
+        follow(db, core, events, MapSet.union(read, MapSet.new(items)))
+    end
   end
 
   defp append_extra_tags(fact_events, []), do: fact_events

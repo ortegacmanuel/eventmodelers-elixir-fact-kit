@@ -218,30 +218,27 @@ defmodule MyApp.Slices.<Slice>.CoreTest do
 
   alias MyApp.Slices.<Slice>.Core
 
-  defp fold(events),
-    do: Enum.reduce(events, Core.initial_state(), &Core.apply_event(&2, &1))
+  defp view(events, args),
+    do: events |> Enum.reduce(Core.initial_state(), &Core.apply_event(&2, &1)) |> Core.project(args)
 
   defp ev(type, data \\ %{}), do: %{"event_type" => type, "event_data" => data}
 
   describe "<the specification's literal title>" do
     test "<what it pins down>" do
-      state = fold([ev("<EventA>", %{"field" => "value"})])
-      assert state.field == "value"
+      assert view([ev("<EventA>", %{"field" => "value"})], <key>).field == "value"
     end
   end
 end
 ```
 
+- **One `describe` per specification in `slice.json`, with its literal title,
+  and nothing else.** No test outside a `describe`: not the empty state, not
+  the order of arrival, not an event the view ignores. If a case matters, it
+  goes on the board first. `scenario_tests_test.exs` checks the titles against
+  `slice.json`.
 - **Only the pure `Core`**, no store and no `Context`.
 - **The data comes from the scenario**: the `given` are the events, and the
-  scenario's `examples` is the expected state.
-- **Test the initial state**: a read model with no events has to be renderable,
-  not blow up. The screen will paint it while the rest arrives.
-- **Test arrival order** if the view folds several flows that arrive with no
-  guaranteed order. Two events one way and the other way must give the same
-  result, or the system has a race.
-- **Test that `apply_event/2` ignores what isn't its own**: a type that isn't
-  hers must not change the state.
+  scenario's `then` is the expected read model.
 - **Never compare `Map.keys/1` against a list.** The order **isn't guaranteed**
   and the assertion fails intermittently — it passes locally and breaks the gate
   later. To pin down a row's keys:
@@ -269,7 +266,6 @@ mix test test/my_app/slices/<slice>/
 - [ ] `query/1` names **every** event type that appears in the `mapping:` values.
 - [ ] The `derived:` fields are computed, not stored.
 - [ ] Every `specifications[]` has its `describe`.
-- [ ] There's a test for the empty initial state.
 - [ ] Reads go through `MyApp.Reader.read/2`, not `Fact.read/2`.
 - [ ] If the slice has `screens`, you have **not** written an interface: you have
       written the **screen brief** at `docs/screens/<slice>.md`, as

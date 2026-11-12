@@ -230,6 +230,13 @@ If the only invariant is idempotency, `query/1` is the event type itself scoped
 by its identifier — with a freshly generated id it folds nothing, and at the same
 time it guards against a retry with the same id.
 
+If the decision needs events it can only name after reading others — the
+plots of a lot's receptions, which aren't tagged with the lot — add
+`next_query(state)`: it returns the follow-up queries the folded state implies,
+and `Decide` reads the new ones, folds again and stops when none are new. The
+command keeps the board's fields; `context.ex` never pre-reads to fill one in.
+Every follow-up query joins the append condition.
+
 `append_condition/1` falls back to `query/1`, which is the safe default. Override
 it only when concurrent events **cannot** invalidate the decision.
 
@@ -257,7 +264,7 @@ Error reasons are **domain atoms** (`:geometry_outside_country`,
 ### `core.ex` is the contract and nothing else
 
 `core.ex` defines `query/1`, `initial_state/0`, `apply_event/2`, `execute/2`
-and, when it's overridden, `append_condition/1`. **No other `def` or `defp`.**
+and, when needed, `next_query/1` and an overridden `append_condition/1`. **No other `def` or `defp`.**
 Whoever opens the file reads the decision top to bottom: what it reads, how it
 folds, which rules refuse, what it records.
 
@@ -375,8 +382,11 @@ composition root and knows about everything it supervises.
 
 **File:** `test/my_app/slices/<slice>/core_test.exs`
 
-**One `describe` per specification in `slice.json`, with its literal title.** That
-way you can see at a glance which board scenario each block covers.
+**One `describe` per specification in `slice.json`, with its literal title, and
+nothing else.** No test outside a `describe`: not the command's shape, not the
+tags, not an extra case the board doesn't have. If a case matters, it goes on
+the board first. `scenario_tests_test.exs` checks the titles against
+`slice.json`.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.CoreTest do
@@ -419,18 +429,6 @@ Rules:
   API response, a deployed artefact — the fixture has to be derived from it and
   guarded against drift, or the test only proves the code agrees with itself.
   `/build-automation`, step 2, has the guard.
-
-### `command_test.exs` — the shape
-
-**File:** `test/my_app/slices/<slice>/command_test.exs`. Pure, like the core test.
-
-- One test for the board's example: `{:ok, %<Command>{}} = <Command>.new(params)`
-  with the `when` fields of a specification.
-- One test per required field: without it, `{:error, changeset}` with the
-  error on that field (`errors_on`-style: `changeset.errors[:field]`).
-- One per closed list or format the description states.
-- If the board still carries a shape `SPEC_ERROR` scenario, its `describe` goes
-  here, with its literal title, not in `core_test.exs`.
 
 ### If a test fails, suspect the test
 
