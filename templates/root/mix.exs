@@ -42,6 +42,11 @@ defmodule MyApp.MixProject do
     [
       # The event store: files, no database.
       {:fact, "~> 0.2.0"},
+      # Ecto WITHOUT a database: only `Ecto.Changeset` over `embedded_schema`,
+      # to cast and validate commands and to drive Phoenix forms. No
+      # `ecto_sql`, no Repo, no migrations — the store is `fact`.
+      {:ecto, "~> 3.12"},
+      {:phoenix_ecto, "~> 4.5"},
       # HTTP client for the external systems an automation slice calls.
       # Remove it if none do.
       {:req, "~> 0.5"},

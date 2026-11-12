@@ -6,7 +6,7 @@ goes or what each thing is called.
 
 Domain events live in `lib/my_app/slices/<slice>/`, one per file. The framework
 is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex`,
-`state_change.ex`, `state_view.ex`, `fact_event.ex`, `id.ex`.
+`state_change.ex`, `state_view.ex`, `fact_event.ex`.
 
 ## File constraints
 
@@ -25,7 +25,11 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
   language, keep it: slice titles, event names and field names come from
   `slice.json` and are the shared vocabulary with the people who modelled it.
   The framework modules keep their English names.
-- **No Ecto in the domain.** For identifiers, `MyApp.Id.uuid4/0`.
+- **Ecto for commands, never for storage.** A command is an `embedded_schema`
+  validated by an `Ecto.Changeset` (rule 3 below). No `ecto_sql`, no `Repo`, no
+  `schema "..."`, no migrations: the store is `fact` and read models are
+  folded. `core.ex`, events and views never touch Ecto. Identifiers:
+  `Ecto.UUID.generate/0`, called in `context.ex`.
 - **HTTP:** `Req`. Never `httpoison`, `tesla` or `httpc`.
 - **Never nest modules in one file**: it causes cyclic dependency errors.
 
@@ -138,16 +142,37 @@ If an event has no `idAttribute: true` at all, **stop and invoke
 This is the only authorised deviation from "if it isn't in `slice.json`, it
 isn't in the code". Document it in the command's `@moduledoc`.
 
-### 3. Validation doesn't get split
+### 3. Shape is the command's job; `core.ex` holds the domain
 
-The usual rule sends shape validation to `context.ex` and invariants to
-`core.ex`. With the board's specifications that doesn't work: the `SPEC_ERROR`
-scenarios are tested in `core_test.exs`, which is pure and never goes through
-`Context`.
+The modeling rule this kit builds against, from Nebulit's modeling kit
+(`eventmodeling-elaborating-scenarios`, 2026-10-07):
 
-> All validation lives in `core.ex`, shape checks included. Decoding JSON or
-> checking ranges is pure, so it fits. `context.ex` only cleans the input
-> (`nil`, whitespace) and builds the command.
+> **Scenarios specify business rules, not technical guarantees.** Every rejection must name a rule a domain expert would recognise and could argue about ("a closed day takes no new todos"). Do not write scenarios for: duplicate or colliding ids, retries/idempotency of the same request, missing or malformed required fields, type/format checks, or infrastructure failures — the implementation handles those and they say nothing about the domain. Rules the brief states explicitly (e.g. "adding on a closed day is rejected") are the core of the coverage and must all be present.
+
+So the board's `SPEC_ERROR` scenarios are **domain rules**, and the shape of a
+command is not on the board as scenarios — it is in the command's
+`fields[]`. The build splits along the same line:
+
+- **Shape → the command's changeset.** `<Command>.new/2` casts and validates,
+  and returns `{:ok, cmd}` or `{:error, %Ecto.Changeset{}}`. It comes from the
+  field schema, mechanically: `type` → Ecto type, `optional: false` →
+  `validate_required`, `cardinality: "List"` → `{:array, type}`, a closed list
+  or a format stated in the field's `description` → `validate_inclusion` /
+  `validate_format`. Nothing else: no shape rule the schema or the description
+  doesn't state.
+- **Domain → `core.ex`.** `execute/2` assumes a well-formed command and holds
+  only the rules a domain expert would state: the `SPEC_ERROR` scenarios. A
+  rule needing no history is still domain if it relates fields to each other
+  or to a reference the business or a regulation sets ("the EORI prefix must be
+  the declared country's").
+- **`context.ex` builds the command before `Decide`.** An ill-formed command
+  never reads the store. The form shows the changeset's errors on each field
+  (`to_form/1`); domain atoms are translated by the screen, as before.
+- **Tie-break:** if the rule's wording would change when the screen or the API
+  changed, it is shape.
+- **An older board may still carry shape scenarios.** Implement them in the
+  changeset and test them in `command_test.exs` under the scenario's literal
+  title — not in `Core`.
 
 ## What this kit does NOT do: screens
 

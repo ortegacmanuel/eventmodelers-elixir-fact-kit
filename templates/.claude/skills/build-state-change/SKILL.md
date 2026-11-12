@@ -71,12 +71,61 @@ defmodule MyApp.Slices.<Slice>.<Slice> do
   below.>
   """
 
-  defstruct [:field_a, :field_b]
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @primary_key false
+  embedded_schema do
+    field :field_a, :string
+    field :field_b, :integer
+    field :<entity>_id, :string     # generated, step 3
+  end
+
+  # The board's fields, cast from the caller's params.
+  @fields [:field_a, :field_b]
+  # Every field with `optional: false` in slice.json.
+  @required [:field_a, :field_b]
+
+  @doc """
+  Builds the command, or says why its shape is wrong. Pure.
+  `generated` carries the identifiers and timestamps `context.ex` creates.
+  """
+  def new(params, generated \\ %{}) do
+    params |> changeset(generated) |> apply_action(:new)
+  end
+
+  @doc "The changeset a form validates against as the user types."
+  def changeset(params, generated \\ %{}) do
+    %__MODULE__{}
+    |> cast(params, @fields)
+    |> change(generated)
+    |> validate_required(@required)
+  end
 end
 ```
 
 **The fields are the ones in `commands[].fields[]` in `snake_case`**, plus the
 generated ones from step 3.
+
+**The changeset is derived from the field schema, and only from it** (rule 3 of
+`.build-kit/CLAUDE.md`):
+
+| `slice.json` | changeset |
+|---|---|
+| `type: "String"` / `"UUID"` | `:string` |
+| `type: "Int"` | `:integer` |
+| `type: "Double"` / `"Decimal"` | `:float` / `:decimal` |
+| `type: "Boolean"` | `:boolean` |
+| `type: "Date"` | `:date` |
+| `type: "DateTime"` | `:string` (ISO 8601, as the events carry it) |
+| `type: "Custom"` | `:map` |
+| `cardinality: "List"` | `{:array, <type>}` |
+| `optional: false` | in `@required` |
+| a closed list in the field's `description` | `validate_inclusion/3` |
+| a format in the field's `description` | `validate_format/3` |
+
+Don't add a shape rule the schema or the description doesn't state. Shape is
+never in `core.ex`: `Core` assumes a well-formed command.
 
 ---
 
@@ -85,7 +134,7 @@ generated ones from step 3.
 `slice.json` marks fields `generated: true` or
 `mapping: "derived:append instant"`. **Don't generate them in `Core`.**
 
-`Core` is pure: a `DateTime.utc_now()` or a `uuid4()` inside `execute/2` makes
+`Core` is pure: a `DateTime.utc_now()` or an `Ecto.UUID.generate()` inside `execute/2` makes
 the decision impossible to test without a clock and without seeding randomness.
 
 > **Identifiers and timestamps are generated in `context.ex` and travel on the
@@ -95,7 +144,7 @@ the decision impossible to test without a clock and without seeding randomness.
 This is the **only** authorised deviation from "if it isn't in `slice.json`, it
 isn't in the code". Write it down in the command's `@moduledoc`, with the reason.
 
-- Identifiers → `MyApp.Id.uuid4()`
+- Identifiers → `Ecto.UUID.generate()`
 - Timestamps → `DateTime.utc_now() |> DateTime.to_iso8601()`
 
 ---
@@ -199,9 +248,9 @@ defmodule MyApp.Slices.<Slice>.Core do
   def execute(_cmd, %{already_happened: true}), do: {:ok, []}
 
   def execute(%<Command>{} = cmd, _state) do
-    with :ok <- validate(cmd) do
-      {:ok, [%<Event>{...}]}
-    end
+    # Domain rules only — the board's SPEC_ERROR scenarios. The command's
+    # shape was checked when it was built.
+    {:ok, [%<Event>{...}]}
   end
 end
 ```
@@ -218,19 +267,15 @@ time it guards against a retry with the same id.
 `append_condition/1` falls back to `query/1`, which is the safe default. Override
 it only when concurrent events **cannot** invalidate the decision.
 
-### All validation here (a rule `slice.json` doesn't state)
+### Only domain rules here (a rule `slice.json` doesn't state)
 
-The usual rule sends invariants to `core.ex` and shape validation to
-`context.ex`. With the board's specifications that doesn't work: the `SPEC_ERROR`
-scenarios are tested in `core_test.exs`, which is pure and never goes through
-`Context`.
+`execute/2` holds the rules the board's `SPEC_ERROR` scenarios state — business
+rules, with or without history. Shape (presence, type, format, closed lists)
+was checked by the command's changeset before `Decide` read anything; see rule 3
+of `.build-kit/CLAUDE.md`.
 
-> **All validation lives in `core.ex`**, shape checks included. Decoding JSON,
-> checking ranges or counting elements is pure, so it fits. `context.ex` only
-> cleans (`nil`, whitespace) and builds the command.
-
-Error reasons are **domain atoms** (`:geometry_required`,
-`:polygon_encloses_no_area`), not strings: the screen translates them.
+Error reasons are **domain atoms** (`:geometry_outside_country`,
+`:plot_already_assigned`), not strings: the screen translates them.
 
 ### Thresholds get justified
 
@@ -252,18 +297,18 @@ defmodule MyApp.Slices.<Slice>.Context do
 
   require Logger
 
-  def <verb>(args...) do
-    id = MyApp.Id.uuid4()
+  def <verb>(params) do
+    id = Ecto.UUID.generate()
 
-    cmd = %<Command>{
+    generated = %{
       <entity>_id: id,
-      ...,
       <timestamp>: DateTime.utc_now() |> DateTime.to_iso8601()
     }
 
-    case write(cmd) do
-      {:ok, _events} -> {:ok, id}
-      error -> error
+    # Shape first: an ill-formed command never reads the store.
+    with {:ok, cmd} <- <Command>.new(params, generated),
+         {:ok, _events} <- write(cmd) do
+      {:ok, id}
     end
   end
 
@@ -283,6 +328,16 @@ end
 Return `{:ok, <identifier>}`, not `{:ok, events}`: the identifier is what the
 layer above needs to subscribe to the result and to show the reference.
 
+The two ways it says no, and what the user sees:
+
+- `{:error, %Ecto.Changeset{}}` — the shape is wrong. The form renders it with
+  `to_form/1`: the message sits under the field.
+- `{:error, atom}` — a domain rule refused it (a board `SPEC_ERROR`). The screen
+  translates the atom.
+
+A processor builds commands from facts, so a changeset error there is a bug,
+not an answer: log it and let the task fail.
+
 ---
 
 ### The one seam the view is allowed to reach through
@@ -293,6 +348,10 @@ stating because otherwise it gets copied without its conditions:
 
 > A view may call a **pure predicate on `Core`** to answer "would this command
 > be accepted?" without sending it.
+
+For **shape**, the view doesn't need this seam: it validates against
+`<Command>.changeset/2` on `phx-change`, the usual Phoenix way. The seam is for a
+**domain** check that needs no history.
 
 The case that earns it: a form or a map that has to enable or disable its submit
 button as the user types. Going through `Context` means a round trip and a
@@ -356,7 +415,7 @@ Rules:
   thing that pins down the rule from step 4.
 - The `given` events are built as **string-keyed maps**, respecting the boundary
   that keeps slices independent.
-- A `SPEC_ERROR` scenario is `assert {:error, :reason} = Core.execute(...)`.
+- A `SPEC_ERROR` scenario is a domain rule: `assert {:error, :reason} = Core.execute(...)`.
 - **Never compare `Map.keys/1` against a list** — the order isn't guaranteed and
   the assertion fails intermittently. Use `MapSet`.
 - **A fixture must never invent the shape of its own input.** Board examples are
@@ -365,6 +424,18 @@ Rules:
   API response, a deployed artefact — the fixture has to be derived from it and
   guarded against drift, or the test only proves the code agrees with itself.
   `/build-automation`, step 2, has the guard.
+
+### `command_test.exs` — the shape
+
+**File:** `test/my_app/slices/<slice>/command_test.exs`. Pure, like the core test.
+
+- One test for the board's example: `{:ok, %<Command>{}} = <Command>.new(params)`
+  with the `when` fields of a specification.
+- One test per `@required` field: without it, `{:error, changeset}` with the
+  error on that field (`errors_on`-style: `changeset.errors[:field]`).
+- One per closed list or format the description states.
+- If the board still carries a shape `SPEC_ERROR` scenario, its `describe` goes
+  here, with its literal title, not in `core_test.exs`.
 
 ### If a test fails, suspect the test
 
@@ -386,12 +457,16 @@ Never commit with warnings.
 
 ## Final check against `slice.json`
 
-- [ ] Every field in `commands[].fields[]` is in the command struct.
+- [ ] Every field in `commands[].fields[]` is in the command's `embedded_schema`.
+- [ ] Every `optional: false` field is in `@required`; no shape rule the schema
+      or the description doesn't state.
+- [ ] `context.ex` builds the command with `new/2` before calling `Decide`.
 - [ ] Every field in `events[].fields[]` is in the event struct.
 - [ ] No invented fields — except the generated ones from step 3, documented.
 - [ ] Every `idAttribute: true` produces its tag.
 - [ ] Every `specifications[]` has its `describe` in the test.
-- [ ] `Core` has no side effects: no `utc_now`, no `uuid4`, no `Req`, no `Fact`.
+- [ ] `Core` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.
+- [ ] `Core` holds no shape checks: only the board's domain rules.
 - [ ] `apply_event/2` has a final clause ignoring what isn't its own.
 - [ ] If the slice has `screens`, you have **not** written an interface: you have
       written the **screen brief** at `docs/screens/<slice>.md`, as

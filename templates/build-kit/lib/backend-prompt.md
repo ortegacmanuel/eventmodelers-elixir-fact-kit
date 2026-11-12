@@ -169,7 +169,8 @@ Use all the key learnings from the progress.txt and update the `.build-kit/AGENT
 **Read `.build-kit/CLAUDE.md` in full before your first slice.** It carries three
 rules `slice.json` doesn't state, and without them the code compiles and is
 wrong: where tags come from, where identifiers and timestamps are generated, and
-why validation isn't split between `Core` and `Context`.
+why a command's shape is checked by its changeset while `Core` holds only the
+domain rules.
 
 **Step 0 is not optional.** The `slice.json` the loop writes is a stub of about
 230 bytes — six fields, no `fields`, no `events`, no `specifications`. Check it

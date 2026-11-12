@@ -47,7 +47,7 @@ back here for the web layer. This skill only covers what that one doesn't.
 
 Everything from there applies without exception: tags come from
 `idAttribute: true`, identifiers and timestamps are generated in `context.ex`,
-and all validation lives in `core.ex`.
+the command's changeset checks its shape and `core.ex` holds the domain rules.
 
 ---
 
