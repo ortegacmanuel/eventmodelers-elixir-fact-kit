@@ -237,6 +237,18 @@ of `.build-kit/CLAUDE.md`.
 Error reasons are **domain atoms** (`:geometry_outside_country`,
 `:plot_already_assigned`), not strings: the screen translates them.
 
+**Exactly the board's, nothing defensive:**
+
+- One error atom per `SPEC_ERROR`, with the board's code. No extra atom for a
+  case another rule already covers (an unknown type is also "not a type this
+  slice accepts").
+- No fallbacks for values the command or an earlier rule guarantees
+  (`x || %{}`, `x || "LOW"`). If it can't be nil, don't handle nil.
+- An event field whose `mapping` is a command field copies the command field.
+  Don't re-derive it.
+- Helpers are `defp`. No public list of rejection reasons, no optional
+  arguments nobody passes.
+
 ### Thresholds get justified
 
 If you need a constant `slice.json` doesn't give you, write in a comment **where
@@ -256,16 +268,13 @@ defmodule MyApp.Slices.<Slice>.Context do
   require Logger
 
   def <verb>(params) do
-    id = Ecto.UUID.generate()
-
-    generated = %{
-      <entity>_id: id,
-      <timestamp>: DateTime.utc_now() |> DateTime.to_iso8601()
-    }
-
-    with {:ok, cmd} <- <Command>.new(params, generated),
+    with {:ok, cmd} <-
+           <Command>.new(params, %{
+             <entity>_id: Ecto.UUID.generate(),
+             <timestamp>: DateTime.utc_now() |> DateTime.to_iso8601()
+           }),
          {:ok, _events} <- write(cmd) do
-      {:ok, id}
+      {:ok, cmd.<entity>_id}
     end
   end
 
@@ -278,6 +287,12 @@ defmodule MyApp.Slices.<Slice>.Context do
   end
 end
 ```
+
+**`params` go straight into `new/2`.** `cast/3` already keeps only the
+schema's fields and treats `""` and `"   "` as missing, so no `params/1` that
+re-picks fields and no `clean/1` that trims. The generated values go inline as
+the second argument. No `change/1` wrapper either: the form validates against
+`<Command>.changeset/1` itself.
 
 Shape first: an ill-formed command never reads the store. And `write/1`
 rescues because `Application.fact_db/0` **raises** if the store isn't up, and
@@ -428,7 +443,10 @@ Never commit with warnings.
 - [ ] Every `idAttribute: true` produces its tag.
 - [ ] Every `specifications[]` has its `describe` in the test.
 - [ ] `Core` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.
-- [ ] `Core` holds no shape checks: only the board's domain rules.
+- [ ] `Core` holds no shape checks: only the board's domain rules, one atom
+      per `SPEC_ERROR`, no defensive fallbacks.
+- [ ] `context.ex` passes `params` straight to `new/2`: no field re-picking, no
+      cleaning, generated values inline.
 - [ ] `apply_event/2` has a final clause ignoring what isn't its own.
 - [ ] If the slice has `screens`, you have **not** written an interface: you have
       written the **screen brief** at `docs/screens/<slice>.md`, as
