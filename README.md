@@ -154,10 +154,15 @@ Not bugs in this kit — behaviour of the ralph loop that will bite you:
 ## Provenance
 
 Derived from building the first chapter of [NAMU](https://namupartner.com) — EUDR
-traceability for Venezuelan cocoa and coffee — slice by slice, and from the base
-modules of `traduka-servo`, `conecta_zen` and `contextovnzla`.
+traceability for Venezuelan cocoa and coffee — slice by slice.
 
 The kit was validated by using it: five real defects surfaced from running it,
 none from reading it. All five are closed, in the blueprint or in the skills.
 
-MIT.
+## License
+
+MIT — see [LICENSE](LICENSE).
+
+The loop prompts in `templates/build-kit/lib/` are adapted from the node and
+supabase templates of [@eventmodelers/cli](https://www.npmjs.com/package/@eventmodelers/cli)
+(MIT, © Martin Dilger).
