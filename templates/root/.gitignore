@@ -49,3 +49,7 @@ npm-debug.log
 # The FACT event store and any other runtime data. Never version controlled:
 # it is environment state, not project state.
 /data/
+
+# eventmodelers credentials (token): never version controlled. The CLI appends
+# this too, but only if the line is missing when it runs.
+.eventmodelers/
