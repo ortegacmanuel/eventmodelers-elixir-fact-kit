@@ -35,6 +35,16 @@ my_app-*.tar
 npm-debug.log
 /assets/node_modules/
 
+# .build-kit/ is mostly the loop the CLI installs (its JS and node_modules):
+# version only the blueprint, the learnings and the prompts, which are yours.
+.build-kit/*
+!.build-kit/CLAUDE.md
+!.build-kit/AGENTS.md
+!.build-kit/lib/
+.build-kit/lib/*
+!.build-kit/lib/*.md
+!.build-kit/lib/check-commit-scope.cjs
+
 
 # The FACT event store and any other runtime data. Never version controlled:
 # it is environment state, not project state.
