@@ -117,6 +117,29 @@ give you"** — it's what stops whoever builds the view from inventing fields or
 asking the domain for things it shouldn't own. There's a worked example in
 `docs/screens/`.
 
+## Known limitation: the append condition can miss a very recent write
+
+`decide.ex` appends with a DCB condition: *fail if anything matching my query
+was written after the position I read*. FACT checks that condition against its
+**index files**, and those are updated asynchronously, a few milliseconds after
+the write is committed. If a second conflicting write arrives inside that
+window, the check doesn't see the first one and both are accepted — silently.
+
+- **When it bites:** two writes guarded by the same rule (same tags) within
+  roughly a millisecond of each other. A person double-clicking is not enough —
+  LiveView disables the button during the round trip — but two processes, or a
+  processor and a person at once, can be.
+- **What you'd see:** an event a rule should have rejected, e.g. a duplicate
+  code. No error is raised.
+- **What the kit already does:** retries on a detected conflict, and waits after
+  each write until it is visible to the next read. That narrows the window but
+  does not close it: the wait goes through one index, not all of them.
+- **Status:** affects FACT 0.2.x and 0.4.x alike; it is a property of the store,
+  not of this kit. A fix (the writer waiting for every indexer to reach its
+  position before checking) is planned as a contribution to FACT, along with
+  support for other stores. Until then, if a rule must never be broken under
+  concurrent writes, serialize those writes yourself.
+
 ## Three rules `slice.json` doesn't tell you
 
 They live in `.build-kit/CLAUDE.md` and they are the reason this kit exists. You
