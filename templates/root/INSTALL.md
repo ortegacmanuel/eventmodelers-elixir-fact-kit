@@ -4,8 +4,9 @@
 
 The kit ships a working Phoenix project: `mix.exs`, `config/`, endpoint,
 router, layouts, assets, and the FACT framework already wired into the
-supervision tree. It compiles and `mix precommit` passes as installed — five
-tests, the ones Phoenix generates.
+supervision tree. It compiles and `mix precommit` passes as installed: eight
+tests, the framework's guards. The five Phoenix generates are tagged `:extra`
+and run with `mix test --include extra`.
 
 There is one thing to do, and one case that needs care.
 
@@ -18,13 +19,15 @@ The CLI copies files without templating, so everything ships as `MyApp` /
 
 ```bash
 APP=my_app; MOD=MyApp   # ← change these two to yours
-grep -rl 'MyApp\|my_app' lib config test assets mix.exs README.md AGENTS.md \
-  .claude/skills .build-kit/CLAUDE.md 2>/dev/null \
+grep -rl 'MyApp\|my_app' lib config test assets docs mix.exs README.md AGENTS.md \
+  .gitignore .claude/skills .build-kit/*.md .build-kit/lib/*.md 2>/dev/null \
   | xargs sed -i "s/MyApp/$MOD/g; s/my_app/$APP/g"
 mv lib/my_app "lib/$APP"
 mv lib/my_app_web "lib/${APP}_web"
 mv lib/my_app.ex "lib/$APP.ex"
 mv lib/my_app_web.ex "lib/${APP}_web.ex"
+mv test/my_app "test/$APP"
+mv test/my_app_web "test/${APP}_web"
 ```
 
 Then:

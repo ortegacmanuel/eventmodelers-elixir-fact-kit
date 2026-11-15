@@ -28,7 +28,7 @@ mkdir -p _build
 
 if [ ! -x "$tailwind_bin" ]; then
   echo "==> Downloading Tailwind ${TAILWIND_VERSION}..."
-  curl -sSL -o "$tailwind_bin" \
+  curl -fsSL -o "$tailwind_bin" \
     "https://github.com/tailwindlabs/tailwindcss/releases/download/v${TAILWIND_VERSION}/tailwindcss-${TARGET}"
   chmod +x "$tailwind_bin"
 fi
@@ -36,9 +36,9 @@ fi
 if [ ! -x "$esbuild_bin" ]; then
   echo "==> Downloading esbuild ${ESBUILD_VERSION}..."
   tmp="$(mktemp -d)"
-  curl -sSL -o "$tmp/esbuild.tgz" \
-    "https://registry.npmjs.org/@esbuild/${TARGET/-/}/-/${TARGET/-/}-${ESBUILD_VERSION}.tgz" \
-    || curl -sSL -o "$tmp/esbuild.tgz" \
+  curl -fsSL -o "$tmp/esbuild.tgz" \
+    "https://registry.npmjs.org/@esbuild/${TARGET}/-/${TARGET}-${ESBUILD_VERSION}.tgz" \
+    || curl -fsSL -o "$tmp/esbuild.tgz" \
       "https://registry.npmjs.org/esbuild-${TARGET}/-/esbuild-${TARGET}-${ESBUILD_VERSION}.tgz"
   tar -xzf "$tmp/esbuild.tgz" -C "$tmp"
   mv "$tmp/package/bin/esbuild" "$esbuild_bin"
