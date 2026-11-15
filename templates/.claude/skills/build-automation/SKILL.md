@@ -276,6 +276,33 @@ Two things follow, and both matter more than the ceiling itself:
   `process/1` has to return something that distinguishes the two; `:ok` for both
   is a bug you won't see until you're the one being rate-limited.
 
+### What a poll costs
+
+`Queue.pending()` is a view, so every poll **reads the queue's whole history**:
+every event that ever opened or closed an item, from position 1, folded from
+scratch. The cost grows with the history, not with what is pending: a queue
+with nothing to do still reads every item it ever did.
+
+That is the right default. It keeps the queue a query with no state of its own,
+so a restart, a crash or a redeploy can't make it forget or repeat anything.
+And while the history is small, the read takes milliseconds.
+
+Watch two numbers: how long one `pending()` takes, and the poll interval. When
+the read becomes a noticeable fraction of the interval — or every processor
+together keeps the store busy between polls — switch that one queue to
+**reading from the last position seen**:
+
+- the processor keeps, in its own state, the folded queue and the
+  `store_position` of the last event it folded;
+- each poll reads only the events after it (`Fact.read/3` takes a
+  `position:` option) and folds them onto what it has;
+- on start it has nothing, so the first poll reads everything, as today. A
+  restart costs one full read, not one per poll.
+
+The queue stays a fold of the store; the processor only stops starting it over.
+Don't do this up front, and don't do it by keeping a counter or a list of
+"done" ids next to the store — that is the second queue the rule above forbids.
+
 ### The external system failing is a domain case
 
 If `slice.json` models a failure event, emit it. If it doesn't, **log it and
