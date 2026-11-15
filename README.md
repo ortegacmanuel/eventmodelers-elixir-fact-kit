@@ -18,13 +18,15 @@ npx @eventmodelers/cli init --stack elixir-fact \
 | `.build-kit/CLAUDE.md` | the blueprint — "how we build things here" |
 | `.build-kit/lib/*.md` | the ralph loop prompts |
 | project root | a real Phoenix app: endpoint, router, layouts, assets, supervision tree — compiles and its tests pass as installed |
-| `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `fact_event`, `id` |
+| `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `command`, `event` |
+| `test/support/scenario.ex` | `MyApp.Scenario`: the board's scenarios as `given \|> decide/read \|> expect` |
+| `test/my_app/` | the guards: slice isolation, scenario tests only, the read path agrees with FACT, no Ecto in the domain |
 | `docs/screens/` | a worked example of a screen brief |
 
 The shared skills — `connect`, `learn-eventmodelers-api`, `update-slice-status`,
 `request-feedback` — come from the CLI itself.
 
-**327 lines of Elixir and about 1,400 lines of instructions.** The Elixir is what
+**About 560 lines of framework Elixir and 1,750 lines of instructions.** The Elixir is what
 runs; the instructions are what makes an agent produce the same shape every time.
 
 ## Phoenix + fact + what, exactly
@@ -34,16 +36,16 @@ indices by type and by tag. It does *not* tell you how a command decides, what
 happens when two writes race, how a read model gets built, how a domain struct
 becomes storable, or where any of it lives.
 
-Those 327 lines are that gap:
+Those 560 lines are that gap:
 
 | module | what it solves |
 |---|---|
 | `decide.ex` | **the whole write path**: read → fold → decide → append. Optimistic concurrency (DCB), retry on conflict, and a wait until the write is visible to a subsequent read |
 | `reader.ex` | **the read path**: uses `fact`'s indices instead of scanning the ledger. Measured: 235 ms → 0.07 ms over 20,000 events |
-| `state_change.ex` | the contract for a write slice: `query`, `append_condition`, `initial_state`, `apply_event`, `execute` |
-| `state_view.ex` | the contract for a read slice: `query`, `initial_state`, `apply_event` |
-| `fact_event.ex` | protocol: domain struct → `fact` map (`type`, `data`, **`tags`**) |
-| `id.ex` | `uuid4` without pulling Ecto into the domain |
+| `state_change.ex` | the contract for a write slice: `query`, `append_condition`, `initial_state`, `apply_event`, `execute`, and optionally `next_query` to follow a reference read in the first pass |
+| `state_view.ex` | the contract for a read slice: `query`, `initial_state`, `apply_event`, and optionally `next_query` and `project` (shape the folded state for the screen) |
+| `event.ex` | protocol: domain struct → `fact` map (`type`, `data`, **`tags`**), declared with `@derive` on the struct |
+| `command.ex` | `use MyApp.Command`: an `embedded_schema` with `new/2` and `changeset/2`, required fields unless the board says optional |
 
 **What you don't get, and that's half the point:** no database, no migrations,
 no Ecto schemas, no `Repo`, no projection tables. **Read models are folded on
@@ -149,13 +151,15 @@ by hand and hitting them:
 1. **Tags come from `idAttribute: true`.** `slice.json` ships `tags: []` on every
    element: they aren't empty, they're **underived**. And tags are the query keys
    for the entire system — a made-up tag doesn't fail, it silently stops finding
-   events downstream.
+   events downstream. The scenario tests catch it: `MyApp.Scenario` stores the
+   `given` with the production tags and reads it back through the slice's own
+   query, so a query that misses an event fails the test and names the event.
 2. **Generated fields travel on the command.** A `derived:append instant` looks
    like it's produced at write time; doing that inside `Core` breaks purity and
    leaves the decision impossible to test without a clock.
 3. **Validation doesn't get split** between `Core` and `Context`. The board's
-   `SPEC_ERROR` scenarios are tested against the pure `Core`, which never goes
-   through `Context`.
+   `SPEC_ERROR` scenarios run through `MyApp.Scenario` against the `Core`, which
+   never goes through `Context`.
 
 ## Loop quirks worth knowing
 
