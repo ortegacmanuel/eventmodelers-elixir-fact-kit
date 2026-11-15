@@ -25,14 +25,26 @@ defmodule MyApp.StateView do
   @optional_callbacks next_query: 1, project: 2
 
   def read(db, core, args) do
-    Code.ensure_loaded!(core)
-    first = List.wrap(core.query(args))
-    state = follow(db, core, MyApp.Reader.read(db, first), MapSet.new(first))
-
-    if function_exported?(core, :project, 2), do: core.project(state, args), else: state
+    {view, _items} = view(core, args, &MyApp.Reader.read(db, &1))
+    view
   end
 
-  defp follow(db, core, events, read) do
+  @doc """
+  The read with the store passed in: `core.query(args)`, then `next_query/1`
+  until nothing new, the fold, and `project/2`. Returns `{view,
+  every_query_item_read}`. Production reads FACT; `MyApp.Scenario` reads the
+  scenario's `given`, so a test runs this same code.
+  """
+  def view(core, args, read) do
+    Code.ensure_loaded!(core)
+    first = List.wrap(core.query(args))
+    {state, items} = follow(read, core, read.(first), MapSet.new(first))
+
+    view = if function_exported?(core, :project, 2), do: core.project(state, args), else: state
+    {view, MapSet.to_list(items)}
+  end
+
+  defp follow(read_fun, core, events, read) do
     state = Enum.reduce(events, core.initial_state(), &core.apply_event(&2, &1))
 
     new =
@@ -42,15 +54,15 @@ defmodule MyApp.StateView do
 
     case new do
       [] ->
-        state
+        {state, read}
 
       items ->
         events =
-          (events ++ MyApp.Reader.read(db, items))
+          (events ++ read_fun.(items))
           |> Enum.uniq_by(& &1["event_id"])
           |> Enum.sort_by(& &1["store_position"])
 
-        follow(db, core, events, MapSet.union(read, MapSet.new(items)))
+        follow(read_fun, core, events, MapSet.union(read, MapSet.new(items)))
     end
   end
 end

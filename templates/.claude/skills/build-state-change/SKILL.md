@@ -392,35 +392,59 @@ the board first. `scenario_tests_test.exs` checks the titles against
 defmodule MyApp.Slices.<Slice>.CoreTest do
   use ExUnit.Case, async: true
 
+  import MyApp.Scenario
+
   alias MyApp.Slices.<Slice>.{<Command>, <Event>, Core}
-
-  defp given(events),
-    do: Enum.reduce(events, Core.initial_state(), &Core.apply_event(&2, &1))
-
-  defp fact_event(type, data \\ %{}),
-    do: %{"event_type" => type, "event_data" => data}
-
-  defp cmd(overrides \\ %{}), do: Map.merge(%<Command>{...}, overrides)
+  alias MyApp.Slices.<OtherSlice>.<GivenEvent>
 
   describe "<the specification's literal title>" do
     test "<what it pins down>" do
-      assert {:ok, [%<Event>{} = e]} = Core.execute(cmd(), given([]))
-      assert e.field == "<the example from slice.json>"
+      given([%<GivenEvent>{<entity>_id: "<example>", field: "<example>"}])
+      |> decide(Core, %<Command>{<entity>_id: "<example>", field: "<example>"})
+      |> expect({:ok, [%<Event>{<entity>_id: "<example>", field: "<example>"}]})
+    end
+  end
+
+  describe "<a SPEC_ERROR specification's literal title>" do
+    test "<what it pins down>" do
+      given([])
+      |> decide(Core, %<Command>{<entity>_id: "<example>"})
+      |> expect({:error, :<reason>})
     end
   end
 end
 ```
 
+**`given`, `decide`, `expect` — and nothing else.** No helper functions in the
+test (`cmd()`, `given_event()`, a private fold): each scenario reads like the
+board's, with the command and every event written out. Module attributes for an
+id repeated across scenarios are fine.
+
+Why the scenario goes through `MyApp.Scenario` instead of folding the `given` by
+hand: in production the decision only sees what `query/1` reads. `decide/3`
+stores the `given` the way `MyApp.Decide` appends — through
+`MyApp.Event.to_event/1`, so with the production tags — and runs the production
+read-and-fold loop over it, `query/1` and `next_query/1` included. A query that
+forgets a type, asks for the wrong tag or misses a follow-up fails the scenario
+that needs it, and the failure lists the `given` events nothing read.
+
 Rules:
 
-- **The pure `Core` only.** No store, no `Context`, no `ConnCase`.
+- **The `Core` through `MyApp.Scenario` only.** No store, no `Context`, no
+  `ConnCase`, and never `Core.execute/2` on a hand-folded state.
 - **The data comes from `specifications[].given/when/then[].fields[].example`**,
   literally. Don't invent values: the board's are usually measured.
+- **The `given` events are the event structs** of the slices that write them.
+  A test may alias them; only `lib/` is held to slice isolation. An event with
+  no struct in the app — still in the store but written by nothing any more,
+  or from outside — goes in as the shape FACT appends:
+  `%{type: "<Event>", data: %{...}, tags: ["<entity>:<id>"]}`, with `id:` when
+  the fold keys on the event id.
+- `expect/2` takes a pattern: a struct or map names only the keys the scenario
+  pins down; a list must have exactly the elements the scenario has.
+- A `SPEC_ERROR` scenario is a domain rule: `|> expect({:error, :<reason>})`.
 - The tags are pinned down by `event_spec_test.exs` against the board; no
   per-slice test of `MyApp.Event.to_event/1` is needed.
-- The `given` events are built as **string-keyed maps**, respecting the boundary
-  that keeps slices independent.
-- A `SPEC_ERROR` scenario is a domain rule: `assert {:error, :reason} = Core.execute(...)`.
 - **Never compare `Map.keys/1` against a list** — the order isn't guaranteed and
   the assertion fails intermittently. Use `MapSet`.
 - **A fixture must never invent the shape of its own input.** Board examples are

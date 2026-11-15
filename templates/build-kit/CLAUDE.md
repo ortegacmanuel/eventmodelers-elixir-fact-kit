@@ -79,10 +79,15 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 - **The board's scenarios, and nothing else.** One file per slice,
   `test/my_app/slices/<slice>/core_test.exs`, with one `describe` per scenario,
   titled exactly as on the board:
-  - a write slice: `Core.execute/2` over the `given` events, asserting the
-    `then` — the events, or the `SPEC_ERROR`'s atom;
-  - a read slice: `Core.project/2` (or the folded state, without `project/2`)
-    over the `given` events, asserting the `then`.
+  - a write slice: `given(events) |> decide(Core, cmd) |> expect(then)` — the
+    events, or the `SPEC_ERROR`'s atom;
+  - a read slice: `given(events) |> read(Core, args) |> expect(then)`.
+
+  `given`, `decide`, `read` and `expect` come from `MyApp.Scenario`
+  (`test/support/scenario.ex`): the `given` is stored with the production tags
+  and read through the slice's own `query/1` and `next_query/1`, so a wrong
+  query fails the scenario. No helper functions in the tests, and never a
+  hand-folded state.
 
   No test outside a `describe`, and none of the command's shape, the initial
   state, the tags or the order of arrival. `test/my_app/scenario_tests_test.exs`

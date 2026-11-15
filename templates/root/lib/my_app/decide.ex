@@ -141,13 +141,26 @@ defmodule MyApp.Decide do
   # See the moduledoc: today the anchor is the last folded event's position, and
   # this is where you raise it to the visibility mark once the ledger grows.
   defp read_and_fold(db, core, cmd) do
-    Code.ensure_loaded!(core)
-    first = List.wrap(core.query(cmd))
-    {state, last, read} = follow(db, core, MyApp.Reader.read(db, first), MapSet.new(first))
-    {state, last, Enum.reject(MapSet.to_list(read), &(&1 in first))}
+    {state, last, first, follow_ups} = fold(core, cmd, &MyApp.Reader.read(db, &1))
+    {state, last, Enum.reject(follow_ups, &(&1 in first))}
   end
 
-  defp follow(db, core, events, read) do
+  @doc """
+  The read-and-fold loop, with the read passed in: `core.query(cmd)`, then
+  `next_query/1` until nothing new, folding with `apply_event/2`.
+
+  Returns `{state, last_position, first_query_items, every_query_item_read}`.
+  Production reads FACT; `MyApp.Scenario` reads the scenario's `given`, so a
+  test runs this same loop and a wrong query fails the scenario.
+  """
+  def fold(core, cmd, read) do
+    Code.ensure_loaded!(core)
+    first = List.wrap(core.query(cmd))
+    {state, last, items} = follow(read, core, read.(first), MapSet.new(first))
+    {state, last, first, MapSet.to_list(items)}
+  end
+
+  defp follow(read_fun, core, events, read) do
     {state, last} =
       Enum.reduce(events, {core.initial_state(), 0}, fn event, {state, _pos} ->
         {core.apply_event(state, event), event["store_position"] || 0}
@@ -164,11 +177,11 @@ defmodule MyApp.Decide do
 
       items ->
         events =
-          (events ++ MyApp.Reader.read(db, items))
+          (events ++ read_fun.(items))
           |> Enum.uniq_by(& &1["event_id"])
           |> Enum.sort_by(& &1["store_position"])
 
-        follow(db, core, events, MapSet.union(read, MapSet.new(items)))
+        follow(read_fun, core, events, MapSet.union(read, MapSet.new(items)))
     end
   end
 

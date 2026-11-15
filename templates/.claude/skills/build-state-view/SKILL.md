@@ -218,16 +218,16 @@ text and rendering decisions belong to the screen, not the model.
 defmodule MyApp.Slices.<Slice>.CoreTest do
   use ExUnit.Case, async: true
 
+  import MyApp.Scenario
+
   alias MyApp.Slices.<Slice>.Core
-
-  defp view(events, args),
-    do: events |> Enum.reduce(Core.initial_state(), &Core.apply_event(&2, &1)) |> Core.project(args)
-
-  defp ev(type, data \\ %{}), do: %{"event_type" => type, "event_data" => data}
+  alias MyApp.Slices.<OtherSlice>.<EventA>
 
   describe "<the specification's literal title>" do
     test "<what it pins down>" do
-      assert view([ev("<EventA>", %{"field" => "value"})], <key>).field == "value"
+      given([%<EventA>{<entity>_id: "<example>", field: "value"}])
+      |> read(Core, "<example>")
+      |> expect(%{field: "value"})
     end
   end
 end
@@ -238,9 +238,18 @@ end
   the order of arrival, not an event the view ignores. If a case matters, it
   goes on the board first. `scenario_tests_test.exs` checks the titles against
   `slice.json`.
-- **Only the pure `Core`**, no store and no `Context`.
+- **`given`, `read`, `expect` — and nothing else.** No helper functions in the
+  test; every event written out. `read/3` runs the same code as
+  `MyApp.StateView.read/3` — `query/1`, `next_query/1`, the fold and
+  `project/2` — over the `given`, stored with the production tags. A query that
+  doesn't select an event the scenario needs fails it, and the failure lists the
+  `given` events nothing read. No store, no `Context`.
+- **The `given` events are the event structs** of the slices that write them
+  (only `lib/` is held to slice isolation). An event with no struct in the app
+  goes in as `%{type: "<Event>", data: %{...}, tags: ["<entity>:<id>"]}`.
 - **The data comes from the scenario**: the `given` are the events, and the
-  scenario's `then` is the expected read model.
+  scenario's `then` is the pattern `expect/2` matches (a map names only the keys
+  the scenario pins down).
 - **Never compare `Map.keys/1` against a list.** The order **isn't guaranteed**
   and the assertion fails intermittently — it passes locally and breaks the gate
   later. To pin down a row's keys:

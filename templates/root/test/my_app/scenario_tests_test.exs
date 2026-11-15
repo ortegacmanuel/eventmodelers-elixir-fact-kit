@@ -13,6 +13,42 @@ defmodule MyApp.ScenarioTestsTest do
     assert offences == [], Enum.join(offences, "\n")
   end
 
+  # A scenario reads its `given` through the slice's own query (MyApp.Scenario).
+  # A helper function or a direct call to the Core would let a test fold events
+  # by hand, past a query that doesn't select them.
+  test "a scenario is given |> decide or read |> expect, with no helpers" do
+    offences =
+      for file <- Path.wildcard("test/my_app/slices/*/core_test.exs"),
+          source = File.read!(file),
+          not (source =~ ~r/@moduletag :extra/),
+          offence <- shape_offences(source),
+          do: "#{file}: #{offence}"
+
+    assert offences == [], Enum.join(offences, "\n")
+  end
+
+  defp shape_offences(source) do
+    helpers =
+      for [_, name] <- Regex.scan(~r/^\s*defp?\s+([a-z_]\w*[?!]?)/m, source),
+          do: "helper function #{name}"
+
+    direct =
+      for [_, fun] <-
+            Regex.scan(
+              ~r/\bCore\.(execute|apply_event|initial_state|project|query|next_query)\b/,
+              source
+            ),
+          uniq: true,
+          do: "calls Core.#{fun} directly; use decide/3 or read/3"
+
+    import =
+      if source =~ ~r/^\s*import MyApp\.Scenario\b/m,
+        do: [],
+        else: ["doesn't import MyApp.Scenario"]
+
+    helpers ++ direct ++ import
+  end
+
   defp offences(dir, scenarios) do
     files =
       for f <- Path.wildcard("#{dir}/*_test.exs"),

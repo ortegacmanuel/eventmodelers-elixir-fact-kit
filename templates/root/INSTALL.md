@@ -57,8 +57,10 @@ follows is what you want.
 Don't take the root files — they'd overwrite yours. Decline them, or install
 into an empty directory and copy across only what you need:
 
-**Always:** `lib/my_app/{decide,reader,state_change,state_view,fact_event,id}.ex`
-— the framework itself — and `docs/screens/`.
+**Always:** `lib/my_app/{command,decide,event,reader,state_change,state_view}.ex`
+— the framework itself —, `test/support/scenario.ex` (what every slice's tests
+run through; `test/support` must be in your test `elixirc_paths`), the guards in
+`test/my_app/`, and `docs/screens/`.
 
 **Merge into your `mix.exs`:**
 

@@ -66,10 +66,10 @@ defmodule MyApp.Reader do
   # `data` queries have no index: fall back to the original path.
   def read(db, %Fact.QueryItem{data: [_ | _]} = query), do: scan(db, query)
 
-  def read(db, %Fact.QueryItem{tags: [tag | rest], types: types}) do
+  def read(db, %Fact.QueryItem{tags: [tag | _]} = query) do
     db
     |> Fact.read({:index, {Fact.EventTagsIndexer, nil}, tag})
-    |> Enum.filter(&matches?(&1, rest, types))
+    |> Enum.filter(&selects?(query, &1))
   end
 
   def read(db, %Fact.QueryItem{tags: [], types: [type]}) do
@@ -86,10 +86,22 @@ defmodule MyApp.Reader do
 
   defp scan(db, query), do: db |> Fact.read({:query, query}) |> Enum.to_list()
 
-  # Tags inside a QueryItem combine with AND and types with OR. The index has
-  # already resolved the first tag; the rest are applied here.
-  defp matches?(event, tags, types) do
-    type_ok?(event, types) and tags_ok?(event, tags)
+  @doc """
+  Whether `query` selects `event` (a record as `read/2` returns it), with FACT's
+  semantics: the items of a list combine with OR; inside an item, types with OR,
+  tags with AND, and `data` pairs with AND across keys and OR within a key.
+
+  It's the one in-memory match: `read/2` uses it to finish what an index can't
+  express, and `MyApp.Scenario` uses it as the test's store, so a scenario reads
+  its `given` through the same rules production does.
+  `test/my_app/reader_test.exs` holds it against FACT's own scan.
+  """
+  def selects?(:all, _event), do: true
+  def selects?(:none, _event), do: false
+  def selects?(items, event) when is_list(items), do: Enum.any?(items, &selects?(&1, event))
+
+  def selects?(%Fact.QueryItem{types: types, tags: tags, data: data}, event) do
+    type_ok?(event, types) and tags_ok?(event, tags) and data_ok?(event, data)
   end
 
   defp type_ok?(_event, []), do: true
@@ -100,5 +112,13 @@ defmodule MyApp.Reader do
   defp tags_ok?(event, tags) do
     on_event = MapSet.new(event["event_tags"] || [])
     Enum.all?(tags, &MapSet.member?(on_event, &1))
+  end
+
+  defp data_ok?(_event, []), do: true
+
+  defp data_ok?(event, data) do
+    data
+    |> Enum.group_by(fn {k, _} -> to_string(k) end, fn {_, v} -> to_string(v) end)
+    |> Enum.all?(fn {key, values} -> to_string(event["event_data"][key]) in values end)
   end
 end
