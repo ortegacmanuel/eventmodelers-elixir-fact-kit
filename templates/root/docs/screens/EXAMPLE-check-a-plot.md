@@ -50,7 +50,7 @@ There's also a public function to validate **before** submitting, which is what
 lets the button enable or disable without a round trip through the command:
 
 ```elixir
-MyApp.Slices.CheckAPlot.Core.validate_geometry(blob)  # → :ok | {:error, reason}
+MyApp.Slices.CheckAPlot.Decider.validate_geometry(blob)  # → :ok | {:error, reason}
 ```
 
 ## States to render

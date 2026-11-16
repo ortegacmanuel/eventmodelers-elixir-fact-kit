@@ -34,14 +34,14 @@ A view that is **folded on the fly from the events**. In this stack there is **n
 migration, no table, no materialised projection**: you read and reduce.
 
 ```
-Context.function(args)  →  MyApp.StateView.read(db, Core, args)
-                              1. Reader.read(db, Core.query(args))
-                              2. fold with Core.initial_state/0 + Core.apply_event/2
-                              3. Core.next_query(state) → read what's new, fold again (optional)
-                              4. Core.project(state, args)                             (optional)
+Context.function(args)  →  MyApp.StateView.read(db, ReadModel, args)
+                              1. Reader.read(db, ReadModel.query(args))
+                              2. fold with ReadModel.initial_state/0 + ReadModel.apply_event/2
+                              3. ReadModel.next_query(state) → read what's new, fold again (optional)
+                              4. ReadModel.project(state, args)                            (optional)
 ```
 
-Two files, not four: `core.ex` and `context.ex`. No command, no event.
+Two files, not four: `read_model.ex` and `context.ex`. No command, no event.
 
 ---
 
@@ -61,12 +61,12 @@ Two files, not four: `core.ex` and `context.ex`. No command, no event.
 
 ---
 
-## Step 2 — `core.ex`
+## Step 2 — `read_model.ex`
 
-**File:** `lib/my_app/slices/<slice>/core.ex`
+**File:** `lib/my_app/slices/<slice>/read_model.ex`
 
 ```elixir
-defmodule MyApp.Slices.<Slice>.Core do
+defmodule MyApp.Slices.<Slice>.ReadModel do
   @behaviour MyApp.StateView
 
   @impl true
@@ -93,8 +93,9 @@ end
 Note `@behaviour` and not `use`: `StateView` injects nothing. **A view never
 calls another view**, and never uses a fold shared with other slices: if it
 needs the same events another view folds, it folds them itself. Like the write
-side, **`core.ex` is the contract and nothing else**: `query`, `initial_state`,
-`apply_event`, and when needed `next_query` and `project`. No other `def` or
+side's `decider.ex`, **`read_model.ex` is the contract and nothing else**:
+`query`, `initial_state`, `apply_event`, and when needed `next_query` and
+`project`. No other `def` or
 `defp`.
 
 ### When one query can't name it all: `next_query/1`
@@ -196,9 +197,9 @@ may not be what the screen wants.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Context do
-  alias MyApp.Slices.<Slice>.Core
+  alias MyApp.Slices.<Slice>.ReadModel
 
-  def <verb>(<key>), do: MyApp.StateView.read(MyApp.Application.fact_db(), Core, <key>)
+  def <verb>(<key>), do: MyApp.StateView.read(MyApp.Application.fact_db(), ReadModel, <key>)
 end
 ```
 
@@ -208,10 +209,10 @@ ledger scan), follows `next_query/1` and calls `project/2`.
 **A TODO queue — a read model that feeds an AUTOMATION — exposes `pending/0`**,
 whatever its title: the automation is built against that name, often before
 this slice exists (see `/build-automation` Step 1). If what's pending depends on
-the date, the `Context` reads the clock and passes it in; `Core` stays pure.
+the date, the `Context` reads the clock and passes it in; `ReadModel` stays pure.
 
 ```elixir
-def pending, do: MyApp.StateView.read(MyApp.Application.fact_db(), Core, Date.utc_today())
+def pending, do: MyApp.StateView.read(MyApp.Application.fact_db(), ReadModel, Date.utc_today())
 ```
 
 `test/my_app/automation_queue_test.exs` fails if a processor's queue is built
@@ -222,9 +223,9 @@ text and rendering decisions belong to the screen, not the model.
 
 ---
 
-## Step 4 — `core_test.exs`
+## Step 4 — `read_model_test.exs`
 
-**File:** `test/my_app/slices/<slice>/core_test.exs`
+**File:** `test/my_app/slices/<slice>/read_model_test.exs`
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.CoreTest do
@@ -232,13 +233,13 @@ defmodule MyApp.Slices.<Slice>.CoreTest do
 
   import MyApp.Scenario
 
-  alias MyApp.Slices.<Slice>.Core
+  alias MyApp.Slices.<Slice>.ReadModel
   alias MyApp.Slices.<OtherSlice>.<EventA>
 
   describe "<the specification's literal title>" do
     test "<what it pins down>" do
       given([%<EventA>{<entity>_id: "<example>", field: "value"}])
-      |> read(Core, "<example>")
+      |> read(ReadModel, "<example>")
       |> expect(%{field: "value"})
     end
   end

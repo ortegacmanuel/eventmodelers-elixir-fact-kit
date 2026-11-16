@@ -104,8 +104,8 @@ mix setup && mix precommit
 
 | `slice.json` has | skill | files |
 |---|---|---|
-| `commands` / `events` | `build-state-change` | command, event, `core`, `context` |
-| `readmodels` / `queries` | `build-state-view` | `core`, `context` |
+| `commands` / `events` | `build-state-change` | command, event, `decider`, `context` |
+| `readmodels` / `queries` | `build-state-view` | `read_model`, `context` |
 | non-empty `processors` | `build-automation` | those four + `processor` |
 | an inbound external event | `build-webhook` | those four + controller and plug |
 
@@ -116,6 +116,34 @@ processor, the processor issues the command. Here the processor polls that read
 model — its own state-view slice — through `pending/0`. Most other build kits
 subscribe the processor to a trigger event instead, and rebuild whatever list
 they need inside it.
+
+## Three ideas, one slice
+
+The kit puts three well-known ideas together. They aren't the same thing — each
+answers a different question:
+
+| | the question it answers | where it comes from |
+|---|---|---|
+| **[Decider](https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider)** | What shape does the pure write logic have? An initial state, *evolve* (folds one event into the state) and *decide* (command + state → new events, or a rejection). | Jérémie Chassaing, 2021 |
+| **[Functional core, imperative shell](https://www.destroyallsoftware.com/talks/boundaries)** | Where do the side effects live? The decisions are pure; the clock, ids, the store and retries sit in a thin shell around them. | Gary Bernhardt, 2012 ("Boundaries") |
+| **[Vertical slice](https://www.jimmybogard.com/vertical-slice-architecture/)** | How is the code grouped? By feature, from the screen down to storage, not by technical layer. | Jimmy Bogard; in Event Modeling, one slice = one command, read model or automation on the board |
+
+They fit together without overlapping: the slice is the folder; inside it, the
+pure part is the functional core; in a write slice that core has the Decider's
+shape; and the shell runs it.
+
+| file | which idea | what it is |
+|---|---|---|
+| `slices/<slice>/` | vertical slice | one board slice, everything in one folder |
+| `decider.ex` (write) | functional core, Decider shape | `initial_state` = initial state, `apply_event` = *evolve*, `execute` = *decide* — plus three DCB callbacks the classic Decider doesn't have: `query` (what to read), `append_condition` and `next_query` |
+| `read_model.ex` (read) | functional core | a fold (`initial_state` + `apply_event`) plus `project` — the read-side twin: *evolve* with no *decide* |
+| `context.ex` | imperative shell (the slice's part) | the clock, generated ids, error handling |
+| `MyApp.Decide` / `MyApp.StateView` | imperative shell (shared) | reading the store, the fold loop, the append, retries, the visibility wait |
+| `processor.ex` | imperative shell | the polling loop and the external system |
+
+That's why the pure module is named for its role, not its layer: the call says
+what happens — `MyApp.Decide.execute(db, Decider, cmd)`,
+`MyApp.StateView.read(db, ReadModel, args)`.
 
 ## What this kit does NOT do
 
@@ -167,10 +195,10 @@ by hand and hitting them:
    `given` with the production tags and reads it back through the slice's own
    query, so a query that misses an event fails the test and names the event.
 2. **Generated fields travel on the command.** A `derived:append instant` looks
-   like it's produced at write time; doing that inside `Core` breaks purity and
+   like it's produced at write time; doing that inside the `Decider` breaks purity and
    leaves the decision impossible to test without a clock.
-3. **Validation doesn't get split** between `Core` and `Context`. The board's
-   `SPEC_ERROR` scenarios run through `MyApp.Scenario` against the `Core`, which
+3. **Validation doesn't get split** between `Decider` and `Context`. The board's
+   `SPEC_ERROR` scenarios run through `MyApp.Scenario` against the `Decider`, which
    never goes through `Context`.
 
 ## Loop quirks worth knowing

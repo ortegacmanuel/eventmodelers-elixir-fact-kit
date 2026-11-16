@@ -21,16 +21,16 @@ description: Implements a write slice (a command validated against replayed even
 A command that decides, against history, whether to emit events. In this stack:
 
 ```
-Context.function(...)  →  Decide.execute(db, Core, cmd)
-                              1. Reader.read(db, Core.query(cmd))     → events
-                              2. Enum.reduce(…, Core.apply_event/2)   → state
-                              3. Core.execute(cmd, state)             → {:ok, [ev]} | {:error, m}
-                              4. MyApp.Event.to_event/1               → maps
+Context.function(...)  →  Decide.execute(db, Decider, cmd)
+                              1. Reader.read(db, Decider.query(cmd))   → events
+                              2. Enum.reduce(…, Decider.apply_event/2) → state
+                              3. Decider.execute(cmd, state)           → {:ok, [ev]} | {:error, m}
+                              4. MyApp.Event.to_event/1                → maps
                               5. Fact.append(db, …, {append_condition, pos})
                               6. wait until the write is visible
 ```
 
-`Core` is **pure**. `Decide` owns the side effects. `Context` is the only public
+`Decider` is **pure**. `Decide` owns the side effects. `Context` is the only public
 API.
 
 ---
@@ -96,7 +96,7 @@ generated ones from step 3. Types:
 A closed list or a format **stated in the field's `description`** goes in an
 override of `changeset/2` that calls `super/2` and adds `validate_inclusion/3`
 or `validate_format/3`. Nothing else: no shape rule the schema or the
-description doesn't state, and never in `core.ex`.
+description doesn't state, and never in `decider.ex`.
 
 **No messages in the command.** A missing field comes back as an error key
 (`validation: :required`); the screen turns it into words.
@@ -106,9 +106,9 @@ description doesn't state, and never in `core.ex`.
 ## Step 3 — Generated fields (a rule `slice.json` doesn't state)
 
 `slice.json` marks fields `generated: true` or
-`mapping: "derived:append instant"`. **Don't generate them in `Core`.**
+`mapping: "derived:append instant"`. **Don't generate them in `Decider`.**
 
-`Core` is pure: a `DateTime.utc_now()` or an `Ecto.UUID.generate()` inside `execute/2` makes
+`Decider` is pure: a `DateTime.utc_now()` or an `Ecto.UUID.generate()` inside `execute/2` makes
 the decision impossible to test without a clock and without seeding randomness.
 
 > **Identifiers and timestamps are generated in `context.ex` and travel on the
@@ -189,12 +189,12 @@ against `slice.json`.
 
 ---
 
-## Step 5 — `core.ex`
+## Step 5 — `decider.ex`
 
-**File:** `lib/my_app/slices/<slice>/core.ex`
+**File:** `lib/my_app/slices/<slice>/decider.ex`
 
 ```elixir
-defmodule MyApp.Slices.<Slice>.Core do
+defmodule MyApp.Slices.<Slice>.Decider do
   use MyApp.StateChange
 
   alias MyApp.Slices.<Slice>.{<Command>, <Event>}
@@ -261,20 +261,20 @@ Error reasons are **domain atoms** (`:geometry_outside_country`,
   Don't re-derive it.
 - No public list of rejection reasons, no optional arguments nobody passes.
 
-### `core.ex` is the contract and nothing else
+### `decider.ex` is the contract and nothing else
 
-`core.ex` defines `query/1`, `initial_state/0`, `apply_event/2`, `execute/2`
+`decider.ex` defines `query/1`, `initial_state/0`, `apply_event/2`, `execute/2`
 and, when needed, `next_query/1` and an overridden `append_condition/1`. **No other `def` or `defp`.**
 Whoever opens the file reads the decision top to bottom: what it reads, how it
 folds, which rules refuse, what it records.
 
 - The rules are inline in `execute/2`: a `cond` that names the rejection, then
   the event built in place.
-- Nothing from another slice: no `Core`, no `Context`, no fold shared with
+- Nothing from another slice: no `Decider`, no `ReadModel`, no `Context`, no fold shared with
   other slices. A catalogue several slices need can be a declared domain
   module (`.build-kit/CLAUDE.md`), pure and folding no events.
-- `test/my_app/core_contract_test.exs` fails on any other function in a
-  `core.ex`.
+- `test/my_app/slice_contract_test.exs` fails on any other function in a
+  `decider.ex`.
 
 ### Thresholds get justified
 
@@ -290,7 +290,7 @@ business rule.
 
 ```elixir
 defmodule MyApp.Slices.<Slice>.Context do
-  alias MyApp.Slices.<Slice>.{<Command>, Core}
+  alias MyApp.Slices.<Slice>.{<Command>, Decider}
 
   require Logger
 
@@ -306,7 +306,7 @@ defmodule MyApp.Slices.<Slice>.Context do
   end
 
   defp write(cmd) do
-    MyApp.Decide.execute(MyApp.Application.fact_db(), Core, cmd)
+    MyApp.Decide.execute(MyApp.Application.fact_db(), Decider, cmd)
   rescue
     e in RuntimeError ->
       Logger.error("could not write: #{Exception.message(e)}")
@@ -348,7 +348,7 @@ not an answer: log it and let the task fail.
 go through it. There is exactly one exception worth allowing, and it needs
 stating because otherwise it gets copied without its conditions:
 
-> A view may call a **pure predicate on `Core`** to answer "would this command
+> A view may call a **pure predicate on `Decider`** to answer "would this command
 > be accepted?" without sending it.
 
 For **shape**, the view doesn't need this seam: it validates against
@@ -358,13 +358,13 @@ For **shape**, the view doesn't need this seam: it validates against
 The case that earns it: a form or a map that has to enable or disable its submit
 button as the user types. Going through `Context` means a round trip and a
 written event for something the user hasn't committed to yet. Calling
-`Core.valid_<thing>?/1` costs nothing and stays honest, because `Core` is pure —
+`Decider.valid_<thing>?/1` costs nothing and stays honest, because `Decider` is pure —
 no store, no clock, no identifiers.
 
 **Three conditions, all of them:**
 
-- The function is **pure** — the same purity `Core` has everywhere else. The
-  moment a `Core` function touches the store or the clock, this stops being
+- The function is **pure** — the same purity `Decider` has everywhere else. The
+  moment a `Decider` function touches the store or the clock, this stops being
   safe and the view has to go through `Context`.
 - It **answers, it doesn't act.** A predicate or a `:ok | {:error, reason}`. If
   the view wants something to happen, that's `Context`.
@@ -378,9 +378,9 @@ under `lib/<app>/` may name a module from `lib/<app>_web/`. The one legitimate
 exception is `application.ex`, which starts the Endpoint because it is the
 composition root and knows about everything it supervises.
 
-## Step 7 — `core_test.exs`
+## Step 7 — `decider_test.exs`
 
-**File:** `test/my_app/slices/<slice>/core_test.exs`
+**File:** `test/my_app/slices/<slice>/decider_test.exs`
 
 **One `describe` per specification in `slice.json`, with its literal title, and
 nothing else.** No test outside a `describe`: not the command's shape, not the
@@ -394,13 +394,13 @@ defmodule MyApp.Slices.<Slice>.CoreTest do
 
   import MyApp.Scenario
 
-  alias MyApp.Slices.<Slice>.{<Command>, <Event>, Core}
+  alias MyApp.Slices.<Slice>.{<Command>, <Event>, Decider}
   alias MyApp.Slices.<OtherSlice>.<GivenEvent>
 
   describe "<the specification's literal title>" do
     test "<what it pins down>" do
       given([%<GivenEvent>{<entity>_id: "<example>", field: "<example>"}])
-      |> decide(Core, %<Command>{<entity>_id: "<example>", field: "<example>"})
+      |> decide(Decider, %<Command>{<entity>_id: "<example>", field: "<example>"})
       |> expect({:ok, [%<Event>{<entity>_id: "<example>", field: "<example>"}]})
     end
   end
@@ -408,7 +408,7 @@ defmodule MyApp.Slices.<Slice>.CoreTest do
   describe "<a SPEC_ERROR specification's literal title>" do
     test "<what it pins down>" do
       given([])
-      |> decide(Core, %<Command>{<entity>_id: "<example>"})
+      |> decide(Decider, %<Command>{<entity>_id: "<example>"})
       |> expect({:error, :<reason>})
     end
   end
@@ -430,8 +430,8 @@ that needs it, and the failure lists the `given` events nothing read.
 
 Rules:
 
-- **The `Core` through `MyApp.Scenario` only.** No store, no `Context`, no
-  `ConnCase`, and never `Core.execute/2` on a hand-folded state.
+- **The `Decider` through `MyApp.Scenario` only.** No store, no `Context`, no
+  `ConnCase`, and never `Decider.execute/2` on a hand-folded state.
 - **The data comes from `specifications[].given/when/then[].fields[].example`**,
   literally. Don't invent values: the board's are usually measured.
 - **The `given` events are the event structs** of the slices that write them.
@@ -486,15 +486,15 @@ Never commit with warnings.
       is the board's title; every `idAttribute: true` / `tag: true` field or
       subfield is in `tags:`, and nothing else.
 - [ ] Every `specifications[]` has its `describe` in the test.
-- [ ] `Core` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.
-- [ ] `Core` holds no shape checks: only the board's domain rules, one atom
+- [ ] `Decider` has no side effects: no `utc_now`, no `Ecto.UUID`, no `Req`, no `Fact`.
+- [ ] `Decider` holds no shape checks: only the board's domain rules, one atom
       per `SPEC_ERROR`, no defensive fallbacks.
-- [ ] `core.ex` defines only the contract's functions: no helpers.
+- [ ] `decider.ex` defines only the contract's functions: no helpers.
 - [ ] `context.ex` passes `params` straight to `new/2`: no field re-picking, no
       cleaning, generated values inline.
 - [ ] `apply_event/2` has a final clause ignoring what isn't its own.
 - [ ] If the slice has `screens`, you have **not** written an interface: you have
       written the **screen brief** at `docs/screens/<slice>.md`, as
       `.build-kit/CLAUDE.md` requires, and noted it in `progress.txt`. Include
-      the **error atoms** `Core` returns: the screen translates them and can't
+      the **error atoms** `Decider` returns: the screen translates them and can't
       guess them.

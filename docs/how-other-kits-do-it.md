@@ -39,7 +39,7 @@ concurrency is a `nextExpectedStreamVersion`. Classic Decider: `decide`,
 
 | | umadb | skilj | this kit |
 |---|---|---|---|
-| scope the read | `Query` on id tags | `tag_mappings()` | `Core.query/1` |
+| scope the read | `Query` on id tags | `tag_mappings()` | `Decider.query/1` |
 | fold | `DecisionModelLoader.load` | `decide(payload, matching_events)` | `read_and_fold/3` |
 | append condition | `AppendCondition.failIfExistsAfter` | DCB condition | `append_condition/1` + `last_position` |
 | on conflict | fails the append | **retries** | **retries** |

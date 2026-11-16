@@ -171,7 +171,7 @@ point is a **Phoenix controller**, not a processor. Use `/build-webhook`.
 
 The processor is the only file in a slice that may name another slice: the
 `Context` of its queue, of the slice whose command it issues, and of a view it
-consults. Never a `Core`, never a struct. Whatever it reads from a view is not
+consults. Never a `Decider` or a `ReadModel`, never a struct. Whatever it reads from a view is not
 in the command's append condition, so a rule that matters is checked again in
 that command's `execute/2`.
 
@@ -335,7 +335,7 @@ failure nobody discovers in time.
 ## Step 4 — Tests
 
 **The processor isn't tested with the network.** What gets tested is its write
-slice's `Core`, via `/build-state-change`, plus:
+slice's `Decider`, via `/build-state-change`, plus:
 
 - That the queue returns what's pending and **stops returning it** once resolved.
 - The mapping from external response to domain fields, as a pure function. Pull

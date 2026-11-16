@@ -169,7 +169,7 @@ Use all the key learnings from the progress.txt and update the `.build-kit/AGENT
 **Read `.build-kit/CLAUDE.md` in full before your first slice.** It carries three
 rules `slice.json` doesn't state, and without them the code compiles and is
 wrong: where tags come from, where identifiers and timestamps are generated, and
-why a command's shape is checked by its changeset while `Core` holds only the
+why a command's shape is checked by its changeset while the `Decider` holds only the
 domain rules.
 
 **Step 0 is not optional.** The `slice.json` the loop writes is a stub of about

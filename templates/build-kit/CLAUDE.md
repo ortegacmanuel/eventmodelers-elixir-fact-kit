@@ -28,7 +28,7 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 - **Ecto for commands, never for storage.** A command is an `embedded_schema`
   validated by an `Ecto.Changeset` (rule 3 below). No `ecto_sql`, no `Repo`, no
   `schema "..."`, no migrations: the store is `fact` and read models are
-  folded. `core.ex`, events and views never touch Ecto. Identifiers:
+  folded. `decider.ex`, `read_model.ex` and events never touch Ecto. Identifiers:
   `Ecto.UUID.generate/0`, called in `context.ex`.
 - **No prose in slices.** The board is the documentation: everyone reads the
   model, and the code is generated from it. No `@moduledoc`, no `@doc`, no
@@ -40,14 +40,19 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 
 ## Architecture rules
 
-- **All invariants live in `core.ex`, which is pure.** No side effects, no
+- **A slice's pure module is named for its role.** A write slice has a
+  `Decider` (`decider.ex`): it decides whether a command becomes events. A read
+  slice has a `ReadModel` (`read_model.ex`): it folds the events into what a
+  screen or an automation reads. So the call says what happens —
+  `Decide.execute(db, Decider, cmd)`, `StateView.read(db, ReadModel, args)`.
+- **All invariants live in the `Decider`, which is pure.** No side effects, no
   network, no store access. `execute/2` returns `{:ok, [events]}` or
-  `{:error, atom}`.
-- **`core.ex` is the contract and nothing else.** A write slice: `query`,
-  `initial_state`, `apply_event`, `execute`, and when needed `next_query` and
-  an overridden `append_condition`. A read slice: `query`, `initial_state`, `apply_event`, and when
-  needed `next_query` and `project`. No other `def` or `defp`;
-  `core_contract_test.exs` enforces it.
+  `{:error, atom}`. The `ReadModel` is just as pure.
+- **`decider.ex` and `read_model.ex` are the contract and nothing else.** A
+  `Decider`: `query`, `initial_state`, `apply_event`, `execute`, and when needed
+  `next_query` and an overridden `append_condition`. A `ReadModel`: `query`,
+  `initial_state`, `apply_event`, and when needed `next_query` and `project`.
+  No other `def` or `defp`; `slice_contract_test.exs` enforces it.
 - **Every read model goes through `MyApp.StateView.read/3`**: `context.ex` is
   one line.
 - **Every write goes through `MyApp.Decide.execute/4`.** Never call
@@ -63,7 +68,7 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
   - **The one exception is an automation's `processor.ex`:** it may call the
     `Context` of its queue (always through `pending/0`), of the slice whose
     command it issues and of a view it consults — always the `Context`, never a
-    `Core` or a struct. What it
+    `Decider`, a `ReadModel` or a struct. What it
     reads that way is not in the command's append condition, so any rule that
     matters is checked again in that command's `execute/2`.
   - **Declared domain modules** are shared knowledge that folds no events: a
@@ -78,11 +83,12 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 ## Which tests get written
 
 - **The board's scenarios, and nothing else.** One file per slice,
-  `test/my_app/slices/<slice>/core_test.exs`, with one `describe` per scenario,
+  `test/my_app/slices/<slice>/decider_test.exs` (a write slice) or
+  `read_model_test.exs` (a read slice), with one `describe` per scenario,
   titled exactly as on the board:
-  - a write slice: `given(events) |> decide(Core, cmd) |> expect(then)` — the
+  - a write slice: `given(events) |> decide(Decider, cmd) |> expect(then)` — the
     events, or the `SPEC_ERROR`'s atom;
-  - a read slice: `given(events) |> read(Core, args) |> expect(then)`.
+  - a read slice: `given(events) |> read(ReadModel, args) |> expect(then)`.
 
   `given`, `decide`, `read` and `expect` come from `MyApp.Scenario`
   (`test/support/scenario.ex`): the `given` is stored with the production tags
@@ -185,7 +191,7 @@ If an event has no `idAttribute: true` and no `tag: true` at all, **stop and inv
 
 `slice.json` marks fields `generated: true` or with `mapping: "derived:..."`. A
 `derived:append instant` on the event looks like it's produced at write time —
-**don't do that in `Core`**. `Core` is pure, and a `DateTime.utc_now()` inside
+**don't do that in the `Decider`**. It is pure, and a `DateTime.utc_now()` inside
 `execute/2` makes the decision impossible to test without a clock.
 
 > Identifiers and timestamps are generated in `context.ex` and travel on the
@@ -195,7 +201,7 @@ If an event has no `idAttribute: true` and no `tag: true` at all, **stop and inv
 This is the only authorised deviation from "if it isn't in `slice.json`, it
 isn't in the code".
 
-### 3. Shape is the command's job; `core.ex` holds the domain
+### 3. Shape is the command's job; `decider.ex` holds the domain
 
 The modeling rule this kit builds against, from Nebulit's modeling kit
 (`eventmodeling-elaborating-scenarios`, 2026-10-07):
@@ -212,7 +218,7 @@ command is not on the board as scenarios — it is in the command's
   `{:error, %Ecto.Changeset{}}`. A closed list or a format stated in the
   field's `description` → `validate_inclusion` / `validate_format`. Nothing
   else, and no messages: the error is a key, the screen picks the words.
-- **Domain → `core.ex`.** `execute/2` assumes a well-formed command and holds
+- **Domain → `decider.ex`.** `execute/2` assumes a well-formed command and holds
   only the rules a domain expert would state: the `SPEC_ERROR` scenarios. A
   rule needing no history is still domain if it relates fields to each other
   or to a reference the business or a regulation sets ("the EORI prefix must be
@@ -338,15 +344,17 @@ the screen holds presentation only.
 lib/my_app/slices/<slice>/
 ├── <slice>.ex         # command struct         (write slices only)
 ├── <event>.ex         # @derive {MyApp.Event, type:, tags:} + defstruct
-├── core.ex            # use MyApp.StateChange — all invariants, pure
+├── decider.ex         # use MyApp.StateChange — the invariants (write slices)
+├── read_model.ex      # @behaviour MyApp.StateView — the fold    (read slices)
 ├── context.ex         # public API: generate, build, Decide.execute
 └── processor.ex       # automations only: GenServer polling the TODO queue
 
 test/my_app/slices/<slice>/
-└── core_test.exs      # the board's specifications, against the pure Core
+├── decider_test.exs   # the board's specifications, through the Decider
+└── read_model_test.exs  # …or through the ReadModel, for a read slice
 ```
 
-A read slice is two files: `core.ex` and `context.ex`.
+A read slice is two files: `read_model.ex` and `context.ex`.
 
 **Once you have a slice built, read it before the next one.** Existing code
 beats these templates: if they diverge, the template is stale.

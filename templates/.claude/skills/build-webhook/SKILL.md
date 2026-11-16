@@ -42,12 +42,12 @@ already brings the data.
 ## Step 1 — The four write files
 
 A webhook is **a write slice with a different trigger**. Build the command, the
-event, `core.ex` and `context.ex` with `/build-state-change` first, then come
+event, `decider.ex` and `context.ex` with `/build-state-change` first, then come
 back here for the web layer. This skill only covers what that one doesn't.
 
 Everything from there applies without exception: tags come from
 `idAttribute: true`, identifiers and timestamps are generated in `context.ex`,
-the command's changeset checks its shape and `core.ex` holds the domain rules.
+the command's changeset checks its shape and `decider.ex` holds the domain rules.
 
 ---
 
@@ -183,8 +183,8 @@ And the secret comes from `config/runtime.exs`, never from code.
 
 Two, and neither touches the network:
 
-**`test/my_app/slices/<slice>/core_test.exs`** — the board's specifications
-against the pure `Core`, as in any write slice.
+**`test/my_app/slices/<slice>/decider_test.exs`** — the board's specifications
+against the pure `Decider`, as in any write slice.
 
 **`test/my_app_web/controllers/<slice>_webhook_controller_test.exs`** — with
 `ConnCase`, pinning down what's specific to a webhook:
@@ -193,7 +193,7 @@ against the pure `Core`, as in any write slice.
 - A valid body **with an invalid signature** returns **401** and **writes
   nothing**. This is the test that actually matters.
 - A body the domain rejects returns **200**, not 4xx, and writes nothing.
-- **The same body twice writes one event.** Providers retry; if `Core` isn't
+- **The same body twice writes one event.** Providers retry; if `Decider` isn't
   idempotent, every retry duplicates the fact.
 
 ---

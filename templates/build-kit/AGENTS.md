@@ -103,7 +103,7 @@ system on this framework. These aren't hypotheses — each one cost a round trip
 - **The section that earns its keep is "What the domain does NOT give you".**
   It's what stops whoever builds the view from inventing fields or asking the
   domain for them without cause. Write it even if the rest ends up short.
-- The **error atoms** from `Core` always go in: the screen translates them into
+- The **error atoms** from the `Decider` always go in: the screen translates them into
   messages and can't guess them from `slice.json`.
 - It lives in `docs/` and not `.build-kit/` on purpose: `.build-kit/` is
   regenerated on every fetch and the brief has to survive.

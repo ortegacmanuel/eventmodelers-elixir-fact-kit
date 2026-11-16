@@ -14,11 +14,11 @@ defmodule MyApp.ScenarioTestsTest do
   end
 
   # A scenario reads its `given` through the slice's own query (MyApp.Scenario).
-  # A helper function or a direct call to the Core would let a test fold events
-  # by hand, past a query that doesn't select them.
+  # A helper function or a direct call to the Decider or ReadModel would let a
+  # test fold events by hand, past a query that doesn't select them.
   test "a scenario is given |> decide or read |> expect, with no helpers" do
     offences =
-      for file <- Path.wildcard("test/my_app/slices/*/core_test.exs"),
+      for file <- Path.wildcard("test/my_app/slices/*/{decider,read_model}_test.exs"),
           source = File.read!(file),
           not (source =~ ~r/@moduletag :extra/),
           offence <- shape_offences(source),
@@ -33,13 +33,13 @@ defmodule MyApp.ScenarioTestsTest do
           do: "helper function #{name}"
 
     direct =
-      for [_, fun] <-
+      for [_, module, fun] <-
             Regex.scan(
-              ~r/\bCore\.(execute|apply_event|initial_state|project|query|next_query)\b/,
+              ~r/\b(Decider|ReadModel)\.(execute|apply_event|initial_state|project|query|next_query)\b/,
               source
             ),
           uniq: true,
-          do: "calls Core.#{fun} directly; use decide/3 or read/3"
+          do: "calls #{module}.#{fun} directly; use decide/3 or read/3"
 
     import =
       if source =~ ~r/^\s*import MyApp\.Scenario\b/m,
@@ -55,12 +55,18 @@ defmodule MyApp.ScenarioTestsTest do
           not (File.read!(f) =~ ~r/@moduletag :extra/),
           do: Path.basename(f)
 
-    core = Path.join(dir, "core_test.exs")
-    source = if File.exists?(core), do: File.read!(core), else: ""
+    scenario_files = ["decider_test.exs", "read_model_test.exs"]
+
+    source =
+      scenario_files
+      |> Enum.map(&Path.join(dir, &1))
+      |> Enum.filter(&File.exists?/1)
+      |> Enum.map_join("\n", &File.read!/1)
+
     describes = for [_, t] <- Regex.scan(~r/^  describe "((?:[^"\\]|\\.)*)"/m, source), do: t
     loose = Regex.scan(~r/^  test "/m, source)
 
-    Enum.map(files -- ["core_test.exs"], &"#{&1} is not a scenario test") ++
+    Enum.map(files -- scenario_files, &"#{&1} is not a scenario test") ++
       Enum.map(describes -- scenarios, &"describe not on the board: #{&1}") ++
       Enum.map(scenarios -- describes, &"scenario without its describe: #{&1}") ++
       if(loose == [], do: [], else: ["#{length(loose)} test(s) outside a describe"])

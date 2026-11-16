@@ -7,12 +7,12 @@ defmodule MyApp.Scenario do
 
       # a write slice
       given([%LotOpened{lot_id: "L-1"}])
-      |> decide(Core, %CloseLot{lot_id: "L-1"})
+      |> decide(Decider, %CloseLot{lot_id: "L-1"})
       |> expect({:ok, [%LotClosed{lot_id: "L-1"}]})
 
       # a read slice
       given([%PlotRegistered{plot_id: "P-1", name: "La Vega"}])
-      |> read(Core, "P-1")
+      |> read(ReadModel, "P-1")
       |> expect(%{name: "La Vega"})
 
   ## Why not fold the `given` by hand
@@ -56,14 +56,14 @@ defmodule MyApp.Scenario do
   end
 
   @doc "Runs a write slice's decision against the `given`."
-  def decide(%__MODULE__{store: store} = scenario, core, cmd) do
-    {state, _last, _first, items} = MyApp.Decide.fold(core, cmd, &select(store, &1))
-    %{scenario | value: core.execute(cmd, state), read: items}
+  def decide(%__MODULE__{store: store} = scenario, decider, cmd) do
+    {state, _last, _first, items} = MyApp.Decide.fold(decider, cmd, &select(store, &1))
+    %{scenario | value: decider.execute(cmd, state), read: items}
   end
 
   @doc "Computes a read slice's view from the `given`."
-  def read(%__MODULE__{store: store} = scenario, core, args) do
-    {view, items} = MyApp.StateView.view(core, args, &select(store, &1))
+  def read(%__MODULE__{store: store} = scenario, read_model, args) do
+    {view, items} = MyApp.StateView.view(read_model, args, &select(store, &1))
     %{scenario | value: view, read: items}
   end
 
