@@ -61,8 +61,9 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
   never another slice's struct. No view calls another view; no module outside
   `slices/` folds events for several slices: each slice folds its own.
   - **The one exception is an automation's `processor.ex`:** it may call the
-    `Context` of its queue, of the slice whose command it issues and of a view
-    it consults — always the `Context`, never a `Core` or a struct. What it
+    `Context` of its queue (always through `pending/0`), of the slice whose
+    command it issues and of a view it consults — always the `Context`, never a
+    `Core` or a struct. What it
     reads that way is not in the command's append condition, so any rule that
     matters is checked again in that command's `execute/2`.
   - **Declared domain modules** are shared knowledge that folds no events: a

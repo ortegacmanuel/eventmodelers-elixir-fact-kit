@@ -20,7 +20,7 @@ npx @eventmodelers/cli init --stack elixir-fact \
 | project root | a real Phoenix app: endpoint, router, layouts, assets, supervision tree — compiles and its tests pass as installed |
 | `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `command`, `event` |
 | `test/support/scenario.ex` | `MyApp.Scenario`: the board's scenarios as `given \|> decide/read \|> expect` |
-| `test/my_app/` | the guards: slice isolation, scenario tests only, the read path agrees with FACT, no Ecto in the domain |
+| `test/my_app/` | the guards: slice isolation, scenario tests only, the read path agrees with FACT, every automation's queue exposes `pending/0`, no Ecto in the domain |
 | `docs/screens/` | a worked example of a screen brief |
 
 The shared skills — `connect`, `learn-eventmodelers-api`, `update-slice-status`,
@@ -105,6 +105,14 @@ mix setup && mix precommit
 | non-empty `processors` | `build-automation` | those four + `processor` |
 | an inbound external event | `build-webhook` | those four + controller and plug |
 
+**An automation reads a TODO list, it doesn't react to an event.** That is
+Event Modeling's automation pattern, and what the board draws: events open and
+close items on a read model, the `READMODEL → AUTOMATION` edge feeds the
+processor, the processor issues the command. Here the processor polls that read
+model — its own state-view slice — through `pending/0`. Most other build kits
+subscribe the processor to a trigger event instead, and rebuild whatever list
+they need inside it.
+
 ## What this kit does NOT do
 
 **Screens.** `slice.json` carries a screen as metadata and prose — **not as a
@@ -175,9 +183,9 @@ Not bugs in this kit — behaviour of the ralph loop that will bite you:
 - **An idle loop may not notice a slice you mark `Planned`** if the realtime
   event doesn't arrive. Refreshing the local index unblocks it.
 - **Planned slices are built in board order, not dependency order.** An
-  automation listed before its TODO queue gets built first, against a guessed
-  queue API. Plan the queue before its automation, or check the two agree once
-  both are built.
+  automation listed before its TODO queue gets built first, against
+  `<Queue>.Context.pending/0`; it logs a warning on every poll until the queue
+  is built, and `automation_queue_test.exs` checks the two agree once both are.
 - **An automation's external system must be written on the board.** Name it in
   the AUTOMATION's description (a real API, or a fake that only logs). Without
   it, the processor records the fact and sends nothing.

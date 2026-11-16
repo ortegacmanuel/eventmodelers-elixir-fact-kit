@@ -205,6 +205,18 @@ end
 One line. `StateView.read/3` reads through `MyApp.Reader` (indexes, never a
 ledger scan), follows `next_query/1` and calls `project/2`.
 
+**A TODO queue — a read model that feeds an AUTOMATION — exposes `pending/0`**,
+whatever its title: the automation is built against that name, often before
+this slice exists (see `/build-automation` Step 1). If what's pending depends on
+the date, the `Context` reads the clock and passes it in; `Core` stays pure.
+
+```elixir
+def pending, do: MyApp.StateView.read(MyApp.Application.fact_db(), Core, Date.utc_today())
+```
+
+`test/my_app/automation_queue_test.exs` fails if a processor's queue is built
+without it.
+
 No presentation formatting in `project/2` either: formatted strings, translated
 text and rendering decisions belong to the screen, not the model.
 

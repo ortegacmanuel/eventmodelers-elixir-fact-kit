@@ -38,13 +38,25 @@ processor. This skill only covers what that one doesn't.
 
 ---
 
-## Step 1 — The TODO queue exists and you don't build it
+## Step 1 — The TODO queue is another slice, read through `pending/0`
 
-`processors[].dependencies` points at a READMODEL that is the queue. It's usually
-a separate slice on the board, with its own `slice.json`.
+`processors[].dependencies` points at a READMODEL that is the queue: the
+board's `READMODEL → AUTOMATION` edge. It's a separate state-view slice, with
+its own `slice.json`, and this slice doesn't build it.
 
-**If that slice isn't built, stop.** Build it first with `/build-state-view`, or
-invoke `request-feedback` if it isn't on the board at all.
+**The queue is always read through `MyApp.Slices.<Queue>.Context.pending/0`**,
+which returns a list of maps with the read model's fields. `/build-state-view`
+gives every queue that function, so both sides agree on it whichever is built
+first.
+
+**If the queue slice isn't built yet, build this one anyway** — an unbuilt
+dependency is never a reason to stop. Hold the queue as a value in the
+processor's state (`Keyword.get(opts, :queue, Queue)`, Step 3), so this slice
+compiles before the queue exists, and note in the progress log that it is
+built against `<Queue>.Context.pending/0`. Until the queue is built, every poll
+logs a warning; that's expected. `test/my_app/automation_queue_test.exs`
+checks the two agree as soon as both exist. Invoke `request-feedback` only if
+the queue isn't on the board at all.
 
 A TODO queue is "what was asked minus what was resolved": it folds the event that
 opens the work and the one that closes it, and leaves out the ones already
@@ -178,19 +190,17 @@ defmodule MyApp.Slices.<Slice>.Processor do
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
+  # The queue is held as a value, not called through the alias: the slice
+  # compiles before the queue slice exists, and a test can pass its own.
   @impl true
   def init(opts) do
-    if Keyword.get(opts, :start?, true) do
-      schedule()
-      {:ok, %{}}
-    else
-      {:ok, %{}}
-    end
+    if Keyword.get(opts, :start?, true), do: schedule()
+    {:ok, %{queue: Keyword.get(opts, :queue, Queue)}}
   end
 
   @impl true
   def handle_info(:poll, state) do
-    process_pending()
+    process_pending(state.queue)
     schedule()
     {:noreply, state}
   end
@@ -207,8 +217,8 @@ defmodule MyApp.Slices.<Slice>.Processor do
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  defp process_pending do
-    Enum.each(Queue.pending(), fn item ->
+  defp process_pending(queue) do
+    Enum.each(queue.pending(), fn item ->
       Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> process(item) end)
     end)
   rescue
@@ -363,6 +373,8 @@ mix test test/my_app/slices/<slice>/
 ## Final check against `slice.json`
 
 - [ ] The four write files exist, built with `/build-state-change`.
+- [ ] The queue is read through `<Queue>.Context.pending/0`, held as a value in
+      the processor's state (`alias …, as: Queue`), never called through the alias.
 - [ ] **One domain event**, not a "response received" one.
 - [ ] Field names are domain names, not the external API's.
 - [ ] The raw body is a technical attribute and is **not** projected.
