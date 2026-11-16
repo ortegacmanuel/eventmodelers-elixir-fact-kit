@@ -9,6 +9,10 @@ npx @eventmodelers/cli init --stack elixir-fact \
   --git https://github.com/ortegacmanuel/eventmodelers-elixir-fact-kit
 ```
 
+**Worked example:** [eventmodelers-elixir-fact-library](https://github.com/ortegacmanuel/eventmodelers-elixir-fact-library),
+a lending library built with this kit — the board's model, the eight slices the
+loop built from it, and the screens written afterwards.
+
 ## What it installs
 
 | | |
