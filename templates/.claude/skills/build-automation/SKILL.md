@@ -54,6 +54,13 @@ closed. **It's a query, not a subtraction** — don't keep a counter.
 
 ## Step 2 — The anti-corruption layer, and which way it points
 
+**The board has to name the external system.** The AUTOMATION's description says
+what is called and with what (a mailer, an API, a file), or that it's a fake
+(e.g. a mailer that only logs). If the slice doesn't say, don't skip the call:
+build it as a fake that logs one line per call, and leave a comment on the slice
+saying the external system is a fake until the board names it. A processor that
+records our fact without making the call passes every scenario and does nothing.
+
 When the slice calls an external system, the temptation is to model "we received
 this". **Don't.**
 

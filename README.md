@@ -174,6 +174,13 @@ Not bugs in this kit — behaviour of the ralph loop that will bite you:
   board comments, which all four skills read as hints.
 - **An idle loop may not notice a slice you mark `Planned`** if the realtime
   event doesn't arrive. Refreshing the local index unblocks it.
+- **Planned slices are built in board order, not dependency order.** An
+  automation listed before its TODO queue gets built first, against a guessed
+  queue API. Plan the queue before its automation, or check the two agree once
+  both are built.
+- **An automation's external system must be written on the board.** Name it in
+  the AUTOMATION's description (a real API, or a fake that only logs). Without
+  it, the processor records the fact and sends nothing.
 - **The canonical folder name keeps accents and `·`**: it's `title` with spaces
   removed, lowercased. Normalising to ASCII creates a parallel folder the loop
   never looks at.
