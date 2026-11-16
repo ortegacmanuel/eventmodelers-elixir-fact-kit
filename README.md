@@ -182,10 +182,12 @@ Not bugs in this kit — behaviour of the ralph loop that will bite you:
   board comments, which all four skills read as hints.
 - **An idle loop may not notice a slice you mark `Planned`** if the realtime
   event doesn't arrive. Refreshing the local index unblocks it.
-- **Planned slices are built in board order, not dependency order.** An
-  automation listed before its TODO queue gets built first, against
-  `<Queue>.Context.pending/0`; it logs a warning on every poll until the queue
-  is built, and `automation_queue_test.exs` checks the two agree once both are.
+- **Planned slices are built in no particular order.** The loop takes the
+  first Planned slice in the order the server returns them, which is neither
+  the board's columns nor the dependencies, and changes over time. An
+  automation can come before its TODO queue: it is built against
+  `<Queue>.Context.pending/0`, logs a warning on every poll until the queue is
+  built, and `automation_queue_test.exs` checks the two agree once both are.
 - **An automation's external system must be written on the board.** Name it in
   the AUTOMATION's description (a real API, or a fake that only logs). Without
   it, the processor records the fact and sends nothing.
