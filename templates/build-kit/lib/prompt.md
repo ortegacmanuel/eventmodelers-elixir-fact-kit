@@ -97,7 +97,12 @@ Use the skills available in `.claude/skills/` to interact with the board.
 
 ## Escalating Ambiguity
 
-**If the slice's requirements are genuinely ambiguous, contradictory, or missing a decision you need in order to proceed — do not guess, and do not build anyway.** Invoke `/request-feedback` with the specific question; it posts the question as a comment on the slice and marks it `Blocked`, then drop this task without finishing the build. This is an escalation path, not a routine step — most slices are fully specified.
+It depends on the kind of doubt — the rule is in **If something is ambiguous** in `.build-kit/CLAUDE.md`:
+
+- **A detail** (an example value, a field's type or format, a function or folder name, an error atom's wording): make the most sensible assumption, build, and record each assumption with `npx @eventmodelers/cli info "<assumption>" --kind decision`.
+- **A decision about the model or its rules** (domain rule or command shape, contradicting scenarios, an external system the board doesn't name, an event, field or tag that isn't modelled, a rule no scenario covers): invoke `/request-feedback` with the specific question; it posts it on the slice and marks it `Blocked`. Then drop this task without finishing the build.
+
+When in doubt about which kind it is, it's a decision: ask.
 
 ## Recording Learnings
 

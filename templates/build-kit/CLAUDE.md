@@ -371,10 +371,34 @@ not finish needs no status: the loop discards the attempt and puts it back.
 
 ## If something is ambiguous
 
-If `slice.json` is genuinely ambiguous, contradictory, or missing a decision you
-need — **don't guess and don't build anyway**. Invoke `request-feedback` with
-the specific question: it posts a comment on the slice and marks it `Blocked`.
-Then stop.
+Read the whole `slice.json` and the whole skill first: most slices are fully
+specified. If something is still unclear, it depends on **what kind of doubt**
+it is.
 
-This is an escape hatch, not a routine step: read the whole `slice.json` and the
-whole skill first. Most slices are fully specified.
+**A detail — assume it, build, and say so.** Pick the most sensible reading from
+`slice.json`, its scenarios and the surrounding model, and record each
+assumption as one line with `npx @eventmodelers/cli info "<assumption>" --kind
+decision`, which posts it on the slice where whoever reads the board will see
+it. Details are things like:
+
+- an example value, or a field's type or format the board doesn't give;
+- the name of a function, a module or a folder;
+- an error atom's exact wording when the scenario names the case but not the atom.
+
+**A decision about the model or its rules — ask and stop.** Invoke
+`request-feedback` with the specific question: it posts it on the slice and
+marks it `Blocked`. Record no status and stop. These are the project's to
+decide, never the agent's:
+
+- whether a check is a **domain rule** (a `SPEC_ERROR`, in the `Decider`) or the
+  command's **shape** (its changeset) — rule 3 of «Three rules `slice.json`
+  doesn't tell you»;
+- two scenarios, or a scenario and the description, that **contradict** each
+  other;
+- an **external system** the slice talks to that the board doesn't name;
+- an **event, field or tag** the slice needs that isn't modelled, or a tag that
+  can't be derived (see `finding-tags.md`);
+- a rule the description states that **no scenario covers**, or the other way
+  round.
+
+When in doubt about which kind it is, it's a decision: ask.
