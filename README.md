@@ -13,16 +13,6 @@ npx @eventmodelers/cli init --stack elixir-fact \
 a lending library built with this kit — the board's model, the eight slices the
 loop built from it, and the screens written afterwards.
 
-**To see it build, without a board:** install with `--demo` and run the loop
-locally. The CLI's demo model — a shopping cart with every slice type — becomes
-code through this kit's skills:
-
-```
-npx @eventmodelers/cli init --stack elixir-fact --demo \
-  --git https://github.com/ortegacmanuel/eventmodelers-elixir-fact-kit
-npx @eventmodelers/cli run --local
-```
-
 ## What it installs
 
 | | |
@@ -175,7 +165,7 @@ and delete. This one doesn't, on purpose: every slice's code here traces back to
 a slice on the board, and the guards fail on events and tests the board doesn't
 have — an example without a board would be exactly that. The model the agent
 imitates is the skill for the slice's type: each `build-*` skill carries the
-code of its shape. To see real slices, use the worked example or `--demo` above.
+code of its shape. To see real slices, see the worked example above.
 The scaffold itself is checked on every push (`.github/workflows/scaffold.yml`):
 it compiles with warnings as errors, is formatted, and its guards pass.
 
