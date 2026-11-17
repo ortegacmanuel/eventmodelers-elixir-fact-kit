@@ -1,0 +1,41 @@
+# The scaffold a project gets on install has to compile and pass its own guards
+# as shipped. Checked on every push instead of by hand after each change.
+name: Scaffold
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  scaffold:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: erlef/setup-beam@v1
+        with:
+          otp-version: "27.2"
+          elixir-version: "1.18.1"
+
+      # FACT locks its store through a Unix socket whose path is capped at
+      # ~104 characters; the runner's checkout path is too deep for it.
+      - name: Copy the scaffold to a short path
+        run: cp -r templates/root /tmp/scaffold
+
+      - name: Dependencies
+        working-directory: /tmp/scaffold
+        run: mix deps.get
+
+      - name: Compile, warnings as errors
+        working-directory: /tmp/scaffold
+        run: mix compile --warnings-as-errors
+
+      - name: Formatted
+        working-directory: /tmp/scaffold
+        run: mix format --check-formatted
+
+      - name: Tests and guards
+        working-directory: /tmp/scaffold
+        run: mix test
