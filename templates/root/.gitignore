@@ -39,6 +39,7 @@ npm-debug.log
 # version only the blueprint, the learnings and the prompts, which are yours.
 .build-kit/*
 !.build-kit/CLAUDE.md
+!.build-kit/LEARNED.md
 !.build-kit/AGENTS.md
 !.build-kit/lib/
 .build-kit/lib/*

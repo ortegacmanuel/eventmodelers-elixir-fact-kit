@@ -1,13 +1,13 @@
 # What we learned building
 
-Reusable patterns and traps, read **before every slice**: the memory that stops
-mistakes repeating across iterations. It ships seeded with what came out of
+Reusable patterns and traps, read **before every slice**. They came out of
 building the first chapter of a real system on this framework — each one cost a
-round trip. On its first run the loop adopts every line as a learning and
-regenerates this file from then on: add to it with
-`npx @eventmodelers/cli learn`, not by hand. A hand edit adds lines but never
-removes one: correcting a line by hand leaves the old one in the log, and it
-comes back. Retract it with `learn --retract <id>` (ids from `learnings --ids`).
+round trip.
+
+This file is yours and is written by hand; the loop never touches it. What the
+agent learns while building goes to `.build-kit/AGENTS.md`, which the CLI
+generates from `npx @eventmodelers/cli learn`. When a learning there proves
+itself, move it here — or, if it's a rule, into `CLAUDE.md`.
 
 ## The framework
 

@@ -356,9 +356,12 @@ beats these templates: if they diverge, the template is stale.
 
 ## Before you start
 
-Read `.build-kit/AGENTS.md` if it exists, to load what earlier iterations
-learned. It is generated: record what you learn with
-`npx @eventmodelers/cli learn`, never by editing the file.
+Read `.build-kit/LEARNED.md` before every slice: the traps this kit has already
+paid for, written by hand.
+
+Then read `.build-kit/AGENTS.md` if it exists: what the loop has learned in
+this project. It is generated — record what you learn with
+`npx @eventmodelers/cli learn`, never by editing either file.
 
 **The run loop owns the slice's status.** It claims the slice (`InProgress`)
 before your turn and pushes the outcome after it. You record the outcome with
