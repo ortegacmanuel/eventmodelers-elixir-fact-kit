@@ -21,7 +21,7 @@ loop built from it, and the screens written afterwards.
 | `.claude/skills/build-*/references/` | the deep material: finding tags, materialised projections |
 | `.build-kit/CLAUDE.md` | the blueprint — "how we build things here" |
 | `.build-kit/LEARNED.md` | the traps this kit has already paid for, read before every slice. `AGENTS.md` is not shipped: the CLI generates it from what the loop learns |
-| `.build-kit/lib/*.md` | the ralph loop prompts |
+| `.build-kit/lib/*.md` | the ralph loop prompts, and `AGENT.md`: a pointer to where each thing lives, since its old content is now in the prompts, `LEARNED.md` and the generated `AGENTS.md` |
 | project root | a real Phoenix app: endpoint, router, layouts, assets, supervision tree — compiles and its tests pass as installed |
 | `lib/my_app/` | the framework: `decide`, `reader`, `state_change`, `state_view`, `command`, `event` |
 | `test/support/scenario.ex` | `MyApp.Scenario`: the board's scenarios as `given \|> decide/read \|> expect` |
