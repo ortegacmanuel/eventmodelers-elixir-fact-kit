@@ -293,4 +293,4 @@ mix test test/my_app/slices/<slice>/
 - [ ] Reads go through `MyApp.Reader.read/2`, not `Fact.read/2`.
 - [ ] If the slice has `screens`, you have **not** written an interface: you have
       written the **screen brief** at `docs/screens/<slice>.md`, as
-      `.build-kit/CLAUDE.md` requires, and noted it in `progress.txt`.
+      `.build-kit/CLAUDE.md` requires.

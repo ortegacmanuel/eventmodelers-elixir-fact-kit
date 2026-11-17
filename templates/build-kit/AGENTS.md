@@ -1,11 +1,13 @@
 # What we learned building
 
-Reusable patterns and traps. Add what you find here, without repeating what's
-already written. This file is read **before every slice**: it's the memory that
-stops mistakes repeating across iterations.
-
-It ships seeded with what came out of building the first chapter of a real
-system on this framework. These aren't hypotheses — each one cost a round trip.
+Reusable patterns and traps, read **before every slice**: the memory that stops
+mistakes repeating across iterations. It ships seeded with what came out of
+building the first chapter of a real system on this framework — each one cost a
+round trip. On its first run the loop adopts every line as a learning and
+regenerates this file from then on: add to it with
+`npx @eventmodelers/cli learn`, not by hand. A hand edit adds lines but never
+removes one: correcting a line by hand leaves the old one in the log, and it
+comes back. Retract it with `learn --retract <id>` (ids from `learnings --ids`).
 
 ## The framework
 
@@ -27,13 +29,7 @@ system on this framework. These aren't hypotheses — each one cost a round trip
 
 - **`tags: []` doesn't mean "no tags", it means "underived".** They come from
   the fields with `idAttribute: true`. It's the most important rule in the kit.
-- **The `slice.json` the loop writes is a stub.** `fetchAndPersistSlices` uses
-  the **summary** endpoint: six fields, ~230 bytes, no `fields`, no `events`, no
-  `specifications`, and **no board comments**. Refresh with
-  `npx @eventmodelers/cli fetch --context <ctx>` — it's step 0 in `CLAUDE.md`.
-  This happened for real, and the first time it worked **by luck**: for slices
-  with ASCII titles the stub **overwrote** the full definition, and only the ones
-  with accents or `·` survived, because they landed in a different folder.
+- **A `slice.json` of ~230 bytes is the summary stub**: six fields, no `fields`, no `events`, no `specifications`, no board comments. The loop fetches the full slice before each build; if it is still a stub, `npx @eventmodelers/cli fetch --context <ctx>` (step 0 in `CLAUDE.md`).
 - The canonical folder name is `title` with spaces removed, lowercased,
   **keeping accents and `·`**. Normalising to ASCII creates a parallel folder
   the loop never looks at.
@@ -85,14 +81,10 @@ system on this framework. These aren't hypotheses — each one cost a round trip
 - **A queue with no status field is a decision, not an oversight.** Membership
   of the list *is* the status.
 
-## About claiming slices
+## About the loop
 
-- The loop rejects the status change if the slice is already in the target
-  status: **that's not an error**, it means another agent claimed it first.
-  Don't retry that slice; move to the next `Planned` one in the current context.
-- Two loops on the same directory share `progress.txt`, `index.json` and the
-  working tree, and each wants its own branch in the same checkout. If you run
-  them in parallel, **one worktree per agent**.
+- **The loop owns the slice's status**: it claims the slice before the build and pushes the outcome after. Record the outcome with `npx @eventmodelers/cli slice-status Done`; calling `update-slice-status` yourself makes the board's change come back as a queued task and costs a whole extra turn.
+- Two loops on the same directory share `index.json` and the working tree, and each wants its own branch in the same checkout. If you run them in parallel, **one worktree per agent**.
 - An idle loop may not notice a slice marked `Planned` if the realtime event
   doesn't arrive. Refreshing the local index unblocks it.
 

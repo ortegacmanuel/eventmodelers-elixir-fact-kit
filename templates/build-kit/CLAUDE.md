@@ -113,24 +113,19 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 **Every field, event name, command name and business rule comes EXCLUSIVELY from
 `slice.json`.** Don't invent anything that isn't there.
 
-0. **Check the `slice.json` is complete before anything else.** The loop
-   populates `.slices/` from the **summary** endpoint, which returns six fields
-   (`id`, `title`, `status`, `sliceType`, `contextId`, `contextName`) and
-   **no `fields`, no `events`, no `specifications`**. A ~230-byte file is a stub
-   and you cannot build from it. It's easy to miss: the file exists and parses,
-   it's just empty of everything that matters.
-
-   If it is one, refresh with the CLI:
+0. **Check the `slice.json` is complete before anything else.** The run loop
+   fetches the full slice before your turn, but the slice list it refreshes
+   comes from a **summary** endpoint: six fields (`id`, `title`, `status`,
+   `sliceType`, `contextId`, `contextName`), **no `fields`, no `events`, no
+   `specifications`**. A ~230-byte file is that stub and you cannot build from
+   it. If it is one, refresh with the CLI:
 
    ```
    npx @eventmodelers/cli fetch --context <context>
    ```
 
-   It writes the full definition into the same `.build-kit/.slices/` the loop
-   uses, with the same folder naming, so it leaves no duplicates. It also brings
-   two things the stub hasn't got and the skills need: **the board comments on
-   every element**, which they read as hints and resolve afterwards, and a
-   `config.json` with the whole context.
+   It writes the full definition, with the board comments the skills read as
+   hints, into the same `.build-kit/.slices/` and the same folder names.
 
 1. Read `.build-kit/.slices/<context>/<slice>/slice.json`.
 2. Work out the shape and call the skill:
@@ -362,8 +357,14 @@ beats these templates: if they diverge, the template is stale.
 ## Before you start
 
 Read `.build-kit/AGENTS.md` if it exists, to load what earlier iterations
-learned. And when you start a slice, invoke `update-slice-status` with
-`InProgress` before anything else.
+learned. It is generated: record what you learn with
+`npx @eventmodelers/cli learn`, never by editing the file.
+
+**The run loop owns the slice's status.** It claims the slice (`InProgress`)
+before your turn and pushes the outcome after it. You record the outcome with
+`npx @eventmodelers/cli slice-status Done` once the slice is committed; never
+call `update-slice-status` for the slice you are building. A slice you could
+not finish needs no status: the loop discards the attempt and puts it back.
 
 ## If something is ambiguous
 

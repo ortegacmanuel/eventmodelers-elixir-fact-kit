@@ -495,6 +495,6 @@ Never commit with warnings.
 - [ ] `apply_event/2` has a final clause ignoring what isn't its own.
 - [ ] If the slice has `screens`, you have **not** written an interface: you have
       written the **screen brief** at `docs/screens/<slice>.md`, as
-      `.build-kit/CLAUDE.md` requires, and noted it in `progress.txt`. Include
+      `.build-kit/CLAUDE.md` requires. Include
       the **error atoms** `Decider` returns: the screen translates them and can't
       guess them.

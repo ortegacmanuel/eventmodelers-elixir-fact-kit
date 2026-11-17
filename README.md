@@ -205,13 +205,16 @@ by hand and hitting them:
 
 Not bugs in this kit — behaviour of the ralph loop that will bite you:
 
-- **The `slice.json` the loop writes is a stub.** `fetchAndPersistSlices` uses
-  the *summary* endpoint: six fields, ~230 bytes, no `fields`, no `events`, no
-  `specifications`. Step 0 of `CLAUDE.md` makes checking for it mandatory, and
-  the fix is the CLI's own `fetch --context <ctx>`, which writes the full
-  definition to the same place. Easy to miss, because the file exists and
-  parses — it's just empty of everything that matters. And the stub also has no
-  board comments, which all four skills read as hints.
+- **The loop owns the slice's status.** Since CLI 2.0 it claims the slice
+  before the build and pushes the outcome after; the agent only records it,
+  with `eventmodelers slice-status`. The prompts in `.build-kit/lib/` say so —
+  a kit whose prompts still have the agent set statuses itself pays an extra
+  turn per slice. They were checked against **@eventmodelers/cli 2.0.64**; if
+  the CLI's release notes list a breaking change for kits, check them again.
+- **A `slice.json` of ~230 bytes is a stub** from the summary endpoint: no
+  `fields`, no `events`, no `specifications`, no board comments. The loop
+  fetches the full slice before each build, and Step 0 of `CLAUDE.md` still
+  checks, because a stub builds nothing and fails silently.
 - **An idle loop may not notice a slice you mark `Planned`** if the realtime
   event doesn't arrive. Refreshing the local index unblocks it.
 - **Planned slices are built in no particular order.** The loop takes the
@@ -239,6 +242,6 @@ none from reading it. All five are closed, in the blueprint or in the skills.
 
 MIT — see [LICENSE](LICENSE).
 
-The loop prompts in `templates/build-kit/lib/` are adapted from the node and
-supabase templates of [@eventmodelers/cli](https://www.npmjs.com/package/@eventmodelers/cli)
-(MIT, © Martin Dilger).
+The loop prompts in `templates/build-kit/lib/` are adapted from the `blank`
+stack template of [@eventmodelers/cli](https://www.npmjs.com/package/@eventmodelers/cli)
+2.0.64, © Martin Dilger, and stay under the CLI's own licence (CC BY-NC 4.0).
