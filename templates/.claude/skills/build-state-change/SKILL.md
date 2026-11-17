@@ -5,8 +5,8 @@ description: Implements a write slice (a command validated against replayed even
 
 # Build a write slice
 
-> Before anything else, read the definition at
-> `.build-kit/.slices/{Context}/{slice}/slice.json`. That file is the **source of
+> First, read the slice definition from `.slices/{Context}/{slicename}/slice.json` before doing anything else
+> (in this kit, `.build-kit/.slices/…`). That file is the **source of
 > truth** for every field, event and piece of metadata. Never invent fields that
 > aren't there.
 

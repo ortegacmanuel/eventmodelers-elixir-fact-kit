@@ -5,8 +5,8 @@ description: Implements a slice whose trigger is an inbound external event — a
 
 # Build a webhook slice
 
-> Before anything else, read the definition at
-> `.build-kit/.slices/{Context}/{slice}/slice.json`. That file is the **source of
+> First, read the slice definition from `.slices/{Context}/{slicename}/slice.json` before doing anything else
+> (in this kit, `.build-kit/.slices/…`). That file is the **source of
 > truth**. Never invent fields that aren't there.
 
 > **Comments**: every element carries `comments: string[]`. Use them as hints.
