@@ -9,7 +9,8 @@ defmodule MyApp.AutomationQueueTest do
   test "every automation's TODO queue exposes pending/0" do
     offences =
       for file <- Path.wildcard("lib/my_app/slices/*/processor.ex"),
-          [_, queue] <- Regex.scan(~r/alias (MyApp\.Slices\.\w+\.Context), as: Queue\b/, File.read!(file)),
+          [_, queue] <-
+            Regex.scan(~r/alias (MyApp\.Slices\.\w+\.Context), as: Queue\b/, File.read!(file)),
           module = Module.concat([queue]),
           # Not built yet: the automation was built first, against the name.
           Code.ensure_loaded?(module),
