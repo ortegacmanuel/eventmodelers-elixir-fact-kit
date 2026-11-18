@@ -4,9 +4,10 @@
 
 The kit ships a working Phoenix project: `mix.exs`, `config/`, endpoint,
 router, layouts, assets, and the FACT framework already wired into the
-supervision tree. It compiles and `mix precommit` passes as installed: eight
-tests, the framework's guards. The five Phoenix generates are tagged `:extra`
-and run with `mix test --include extra`.
+supervision tree. It compiles and `mix precommit` passes as installed — the
+tests are the framework's guards, and the kit's CI checks that on every push.
+The five Phoenix generates are tagged `:extra` and run with
+`mix test --include extra`.
 
 There is one thing to do, and one case that needs care.
 
