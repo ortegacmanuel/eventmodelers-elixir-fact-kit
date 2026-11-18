@@ -21,7 +21,7 @@ description: Implements a write slice (a command validated against replayed even
 A command that decides, against history, whether to emit events. In this stack:
 
 ```
-Context.function(...)  →  Decide.execute(db, Decider, cmd)
+Context.execute(params)  →  Decide.execute(db, Decider, cmd)
                               1. Reader.read(db, Decider.query(cmd))   → events
                               2. Enum.reduce(…, Decider.apply_event/2) → state
                               3. Decider.execute(cmd, state)           → {:ok, [ev]} | {:error, m}
@@ -294,7 +294,7 @@ defmodule MyApp.Slices.<Slice>.Context do
 
   require Logger
 
-  def <verb>(params) do
+  def execute(params) do
     with {:ok, cmd} <-
            <Command>.new(params, %{
              <entity>_id: Ecto.UUID.generate(),

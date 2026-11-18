@@ -34,7 +34,7 @@ A view that is **folded on the fly from the events**. In this stack there is **n
 migration, no table, no materialised projection**: you read and reduce.
 
 ```
-Context.function(args)  →  MyApp.StateView.read(db, ReadModel, args)
+Context.read(args)  →  MyApp.StateView.read(db, ReadModel, args)
                               1. Reader.read(db, ReadModel.query(args))
                               2. fold with ReadModel.initial_state/0 + ReadModel.apply_event/2
                               3. ReadModel.next_query(state) → read what's new, fold again (optional)
@@ -199,9 +199,12 @@ may not be what the screen wants.
 defmodule MyApp.Slices.<Slice>.Context do
   alias MyApp.Slices.<Slice>.ReadModel
 
-  def <verb>(<key>), do: MyApp.StateView.read(MyApp.Application.fact_db(), ReadModel, <key>)
+  def read(<key>), do: MyApp.StateView.read(MyApp.Application.fact_db(), ReadModel, <key>)
 end
 ```
+
+Always `read`: `read/1` with the read model's args, `read/0` when it takes
+none (`MyApp.StateView.read(db, ReadModel, nil)`).
 
 One line. `StateView.read/3` reads through `MyApp.Reader` (indexes, never a
 ledger scan), follows `next_query/1` and calls `project/2`.

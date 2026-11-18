@@ -29,7 +29,7 @@ model, not a table — does the work, and **writes a fact of our own**.
 TODO queue (STATE_VIEW)  →  Processor (GenServer)
                               → Task.Supervisor.async_nolink
                                   → external call
-                                  → Context.<verb>(...)  →  Decide  →  event
+                                  → Context.execute(...)  →  Decide  →  event
 ```
 
 Five files: the four of a write slice, plus `processor.ex`.
@@ -188,6 +188,10 @@ defmodule MyApp.Slices.<Slice>.Processor do
   # <the measurement that justifies it>
   @poll_interval :timer.seconds(5)
 
+  # 1 unless there is evidence for more — see "How many at a time".
+  # <where the number comes from: none stated, so 1 | the board: "…" | the provider's docs: "…">
+  @in_flight 1
+
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   # The queue is held as a value, not called through the alias: the slice
@@ -195,40 +199,67 @@ defmodule MyApp.Slices.<Slice>.Processor do
   @impl true
   def init(opts) do
     if Keyword.get(opts, :start?, true), do: schedule()
-    {:ok, %{queue: Keyword.get(opts, :queue, Queue)}}
+    {:ok, %{queue: Keyword.get(opts, :queue, Queue), in_flight: %{}}}
   end
 
   @impl true
   def handle_info(:poll, state) do
-    process_pending(state.queue)
     schedule()
-    {:noreply, state}
+    {:noreply, launch(state)}
   end
 
   # Tasks use `async_nolink`: their result and their crash arrive as messages,
   # and you have to handle them or the GenServer fills up with unread mail.
-  def handle_info({ref, _result}, state) when is_reference(ref), do: {:noreply, state}
-  def handle_info({:DOWN, _ref, :process, _pid, :normal}, state), do: {:noreply, state}
+  def handle_info({ref, result}, state) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    state = %{state | in_flight: Map.delete(state.in_flight, ref)}
 
-  def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
+    # A success pulls the next item at once; a failure waits for the poll.
+    {:noreply, if(result == :ok, do: launch(state), else: state)}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, state) do
     Logger.error("<slice> task failed: #{inspect(reason)}")
-    {:noreply, state}
+    {:noreply, %{state | in_flight: Map.delete(state.in_flight, ref)}}
   end
 
   def handle_info(_other, state), do: {:noreply, state}
 
-  defp process_pending(queue) do
-    Enum.each(queue.pending(), fn item ->
-      Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> process(item) end)
-    end)
-  rescue
-    e -> Logger.warning("poll failed: #{Exception.message(e)}")
+  # Pure: whether one more item may start. Tested without the network.
+  def room_for?(in_flight, item_id) do
+    map_size(in_flight) < @in_flight and item_id not in Map.values(in_flight)
   end
 
+  defp schedule, do: Process.send_after(self(), :poll, @poll_interval)
+
+  # An item not launched stays pending in the durable queue for the next poll.
+  defp launch(state) do
+    in_flight =
+      Enum.reduce(state.queue.pending(), state.in_flight, fn item, in_flight ->
+        if room_for?(in_flight, item.<id>) do
+          task = Task.Supervisor.async_nolink(MyApp.TaskSupervisor, fn -> process(item) end)
+          Map.put(in_flight, task.ref, item.<id>)
+        else
+          in_flight
+        end
+      end)
+
+    %{state | in_flight: in_flight}
+  rescue
+    e ->
+      Logger.warning("poll failed: #{Exception.message(e)}")
+      state
+  end
+
+  # :ok or :error — the processor needs to tell them apart (see above).
   defp process(item) do
-    case call_external(item) do
-      {:ok, response} -> <Slice>.<verb>(item.<id>, response)
-      {:error, reason} -> Logger.error("<external> failed for #{item.<id>}: #{inspect(reason)}")
+    with {:ok, response} <- call_external(item),
+         {:ok, _id} <- <Slice>.execute(to_command(item, response)) do
+      :ok
+    else
+      error ->
+        Logger.error("<external> failed for #{item.<id>}: #{inspect(error)}")
+        :error
     end
   end
 end
@@ -248,9 +279,8 @@ Non-negotiable rules:
 - **Secrets come from `config/runtime.exs`**, never from code. If the key is
   missing, the processor should start and log the failure — not take down the
   whole application's boot.
-- **Decide how many calls may be in flight, and write the number down.** See
-  below. There is no safe default here: "as many as the queue holds" is a
-  decision, and it is usually the wrong one.
+- **At most `@in_flight` calls at once, 1 unless there is evidence for more.**
+  See below. "As many as the queue holds" is never the answer.
 
 ### How many at a time
 
@@ -263,11 +293,23 @@ documented**. Most aren't. You find them by hitting them: a burst comes back
 `429`, and the same call made alone succeeds — which is exactly the shape that
 makes it look like the service is broken rather than that you are being rude.
 
-So pick a ceiling and make it a module attribute with a comment saying where the
-number came from (measured? documented? guessed?):
+So **the ceiling is 1 unless there is evidence for more**, and it's a module
+attribute with a comment saying where the number came from. Evidence is one of
+two things:
+
+- **the board says so** — the AUTOMATION's description states a limit or a
+  volume that needs more ("up to 5 calls at a time", "the provider allows
+  10/s");
+- **the external system documents it** — its rate or concurrency limit, cited
+  in the comment.
+
+Without either, it's 1. Don't guess a higher number: a guess shows up as a
+burst of `429`s on the first restart with a deep queue. If the volume clearly
+needs more and nothing says how much, that's a decision for the board — ask
+with `request-feedback`.
 
 ```elixir
-# One at a time: a burst of four returned 429 while a single call succeeded.
+# 1: neither the board nor the provider states a limit.
 @in_flight 1
 ```
 
@@ -387,8 +429,9 @@ mix test test/my_app/slices/<slice>/
 - [ ] The response → domain mapping is a pure function and has a test.
 - [ ] If the slice reads a deployed file: the fixture is derived from it, and a
       guard test compares their vocabulary (skipping when the file is absent).
-- [ ] The in-flight ceiling is a module attribute, with a comment saying where
-      the number came from.
+- [ ] The in-flight ceiling is a module attribute: 1, or more only with the
+      evidence (the board, or the provider's documented limit) cited in its
+      comment.
 - [ ] The launch decision is a pure function and has a test.
 - [ ] Declining to launch leaves the item in the durable queue — there is no
       second queue in memory.

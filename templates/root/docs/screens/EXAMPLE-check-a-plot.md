@@ -17,7 +17,7 @@ out.
 ## How it's entered
 
 ```elixir
-MyApp.Slices.CheckAPlot.Context.check(geometry, session_id)
+MyApp.Slices.CheckAPlot.Context.execute(%{geometry: geometry, session_id: session_id})
 # → {:ok, check_id} | {:error, reason}
 ```
 

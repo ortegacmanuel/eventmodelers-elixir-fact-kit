@@ -351,6 +351,18 @@ test/my_app/slices/<slice>/
 
 A read slice is two files: `read_model.ex` and `context.ex`.
 
+**A `Context` exposes its role's function, always with the same name**, so a
+screen, a controller or an automation can call it before the slice is built —
+the slice's name is already in the module:
+
+| slice | function | e.g. |
+|---|---|---|
+| write | `execute/1` — params in, `{:ok, id}` or `{:error, _}` out | `LendBook.Context.execute(params)` |
+| read | `read/0` or `read/1`, with the read model's args | `Catalogue.Context.read()` |
+| TODO queue | `pending/0` | `OverdueLoans.Context.pending()` |
+
+`context_api_test.exs` fails on a `context.ex` without it.
+
 **Once you have a slice built, read it before the next one.** Existing code
 beats these templates: if they diverge, the template is stale.
 
