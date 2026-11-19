@@ -69,7 +69,7 @@ run through; `test/support` must be in your test `elixirc_paths`), the guards in
 **Merge into your `mix.exs`:**
 
 ```elixir
-{:fact, "~> 0.2.0"},
+{:fact, "~> 0.4.2"},
 {:req, "~> 0.5"},                    # only if a slice calls an external system
 {:lazy_html, "0.1.11", only: :test}, # pinned — see the comment in the shipped mix.exs
 ```

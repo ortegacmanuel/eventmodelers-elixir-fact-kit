@@ -87,6 +87,11 @@ so it doesn't read like a build problem.
 those cap at ~104 characters. A deep project path fails at boot with a
 `Fact.Database … :einval` that says nothing about the real cause.
 
+**Don't test on a copy of a store.** A FACT store records its absolute path
+when it's created, inside its first event, so a copy opened from another folder
+reads and writes the **original**. Restore a backup at the same path; to
+experiment, create a new store.
+
 `--no-ecto` on purpose: the domain has no database. If you need Ecto for
 something else — forms via `phoenix_ecto`, a throwaway mirror of an external
 system — add it later, but **keep it out of the domain**.
@@ -169,28 +174,33 @@ code of its shape. To see real slices, see the worked example above.
 The scaffold itself is checked on every push (`.github/workflows/scaffold.yml`):
 it compiles with warnings as errors, is formatted, and its guards pass.
 
-## Known limitation: the append condition can miss a very recent write
+## Concurrent writes: the append condition holds from FACT 0.4.2
 
 `decide.ex` appends with a DCB condition: *fail if anything matching my query
 was written after the position I read*. FACT checks that condition against its
-**index files**, and those are updated asynchronously, a few milliseconds after
-the write is committed. If a second conflicting write arrives inside that
-window, the check doesn't see the first one and both are accepted — silently.
+**index files**, which it updates asynchronously. Up to FACT 0.4.1, a second
+conflicting write arriving within about a millisecond of the first could slip
+through: the index didn't show the first one yet, and both were accepted,
+silently. Measured: two conflicting writes back to back, both accepted 20 times
+out of 20.
 
-- **When it bites:** two writes guarded by the same rule (same tags) within
-  roughly a millisecond of each other. A person double-clicking is not enough —
-  LiveView disables the button during the round trip — but two processes, or a
-  processor and a person at once, can be.
-- **What you'd see:** an event a rule should have rejected, e.g. a duplicate
-  code. No error is raised.
-- **What the kit already does:** retries on a detected conflict, and waits after
-  each write until it is visible to the next read. That narrows the window but
-  does not close it: the wait goes through one index, not all of them.
-- **Status:** affects FACT 0.2.x and 0.4.x alike; it is a property of the store,
-  not of this kit. A fix (the writer waiting for every indexer to reach its
-  position before checking) is planned as a contribution to FACT, along with
-  support for other stores. Until then, if a rule must never be broken under
-  concurrent writes, serialize those writes yourself.
+FACT 0.4.2 fixes it ([evntd/fact#82](https://github.com/evntd/fact/pull/82)):
+before checking a condition, the writer waits until every index has caught up
+with the ledger. With 10 simultaneous loans of the same book, the
+[worked example](https://github.com/ortegacmanuel/eventmodelers-elixir-fact-library)
+now lends it exactly once, every time. That is why the kit requires
+`~> 0.4.2`.
+
+What it means for you:
+
+- **A new error, retried for you.** If the indices don't catch up within half
+  the append's timeout, `Fact.append` returns `{:error, :index_timeout}` and
+  writes nothing. `decide.ex` retries it like a conflict.
+- **Writes wait for the indices.** Unnoticeable at human pace. Under 1,000
+  events/s of other writes, a guarded append went from ~110 to ~150 ms (median).
+- **The wait after each write stays.** The fix makes the check see every
+  earlier write; it doesn't make the new event readable the moment
+  `Fact.append` returns. `decide.ex` still waits for that.
 
 ## Three rules `slice.json` doesn't tell you
 

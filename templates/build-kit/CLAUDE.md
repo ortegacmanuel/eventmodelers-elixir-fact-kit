@@ -19,7 +19,7 @@ is in `lib/my_app/` — read it before your first slice: `decide.ex`, `reader.ex
 
 ## Standards
 
-- **Language:** Elixir. **Framework:** Phoenix 1.8+. **Store:** `fact` 0.2.0,
+- **Language:** Elixir. **Framework:** Phoenix 1.8+. **Store:** `fact` 0.4.2,
   files, no database.
 - **Domain names follow the board.** If the model is written in another
   language, keep it: slice titles, event names and field names come from

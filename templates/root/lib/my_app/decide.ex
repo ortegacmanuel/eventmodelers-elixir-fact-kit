@@ -4,7 +4,9 @@ defmodule MyApp.Decide do
   optimistic concurrency.
 
   On a concurrency conflict it repeats the whole cycle (re-read, re-fold,
-  re-decide, re-append).
+  re-decide, re-append). Same when FACT answers `:index_timeout`: before
+  checking the condition, FACT (0.4.2+) waits for every index to reach the
+  ledger, and if they don't in time it gives up without writing anything.
 
   ## Reading what you just wrote
 
@@ -88,6 +90,10 @@ defmodule MyApp.Decide do
 
           {:error, %Fact.ConcurrencyError{}} when retries > 0 ->
             Logger.debug("concurrency conflict, retrying (#{retries} left)")
+            do_execute(db, decider, cmd, extra_tags, retries - 1)
+
+          {:error, :index_timeout} when retries > 0 ->
+            Logger.warning("FACT's indices fell behind, retrying (#{retries} left)")
             do_execute(db, decider, cmd, extra_tags, retries - 1)
 
           {:error, reason} ->

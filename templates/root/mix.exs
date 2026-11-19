@@ -41,7 +41,7 @@ defmodule MyApp.MixProject do
   defp deps do
     [
       # The event store: files, no database.
-      {:fact, "~> 0.2.0"},
+      {:fact, "~> 0.4.2"},
       # Ecto WITHOUT a database: only `Ecto.Changeset` over `embedded_schema`,
       # to cast and validate commands and to drive Phoenix forms. No
       # `ecto_sql`, no Repo, no migrations — the store is `fact`.
